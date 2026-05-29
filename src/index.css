@@ -1,0 +1,71 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme {
+  --color-tw-blue: #3375BB;
+  --color-tw-blue-light: #4a8fd4;
+  --color-tw-blue-dark: #2560a0;
+  --color-tw-green: #0DB37E;
+  --color-tw-red: #E53935;
+  --color-tw-dark-bg: #0A0B0D;
+  --color-tw-card-dark: #1A1B1E;
+  --color-tw-card-light: #F5F6FA;
+  --color-tw-muted: #8A8B9B;
+  --color-tw-border: #E8E9EF;
+  --color-tw-border-dark: #2A2B2E;
+
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  font-size: 17px;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior: none;
+}
+
+#root {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 0; height: 0; }
+
+/* Safe area utilities */
+.pb-safe { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+.pt-safe { padding-top: env(safe-area-inset-top); }
+
+/* Native-feeling touch interactions */
+button, a {
+  touch-action: manipulation;
+  cursor: pointer;
+}
+
+/* Momentum scrolling for mobile */
+.momentum-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  scroll-behavior: smooth;
+}
+
+/* Prevent content shift during animations */
+.will-animate {
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: translateZ(0);
+}
