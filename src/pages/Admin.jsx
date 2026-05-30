@@ -366,7 +366,7 @@ export default function Admin() {
             >
               <div
                 className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold"
-                style={{ background: '#3375BB', color: '#fff' }}
+                style={{ background: '#0500FF', color: '#fff' }}
               >
                 A
               </div>

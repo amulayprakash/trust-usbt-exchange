@@ -10,10 +10,10 @@ export default function TimeframeSelector({ value, onChange }) {
           key={frame}
           onClick={() => onChange(frame)}
           className={cn(
-            'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+            'px-3 py-1.5 text-sm transition-colors',
             value === frame
-              ? 'bg-gray-100 text-gray-900 font-semibold'
-              : 'text-gray-500 hover:text-gray-700'
+              ? 'font-bold text-gray-900 border-b-2 border-[#0500FF]'
+              : 'font-medium text-gray-400 hover:text-gray-600'
           )}
         >
           {frame}

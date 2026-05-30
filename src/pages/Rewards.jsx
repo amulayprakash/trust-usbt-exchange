@@ -4,7 +4,7 @@ export default function Rewards() {
   return (
     <div className="flex flex-col items-center justify-center flex-1 p-8 min-h-[500px] text-center">
       <div className="w-20 h-20 rounded-full bg-blue-50 flex items-center justify-center mb-5">
-        <Gift size={36} className="text-[#3375BB]" />
+        <Gift size={36} className="text-[#0500FF]" />
       </div>
       <h2 className="text-xl font-bold text-gray-900 mb-2">Rewards Coming Soon</h2>
       <p className="text-sm text-gray-500 max-w-xs">

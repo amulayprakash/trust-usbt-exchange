@@ -29,7 +29,7 @@ export default function BottomNav() {
                   transition={{ type: 'spring', stiffness: 500, damping: 20 }}
                   className="-mt-5"
                 >
-                  <div className="w-14 h-14 rounded-full flex flex-col items-center justify-center shadow-lg shadow-blue-500/30 mb-1 bg-[#3375BB]">
+                  <div className="w-14 h-14 rounded-full flex flex-col items-center justify-center shadow-lg shadow-blue-500/30 mb-1 bg-[#0500FF]">
                     <motion.div
                       animate={{ rotate: isActive ? 90 : 0 }}
                       transition={{ type: 'spring', stiffness: 350, damping: 22 }}
@@ -50,13 +50,13 @@ export default function BottomNav() {
                   >
                     <Icon
                       size={22}
-                      className={isActive ? 'text-[#3375BB]' : 'text-gray-400'}
+                      className={isActive ? 'text-[#0500FF]' : 'text-gray-400'}
                     />
                   </motion.div>
                   <span
                     className={cn(
                       'text-[10px] font-semibold transition-colors duration-150',
-                      isActive ? 'text-[#3375BB]' : 'text-gray-400'
+                      isActive ? 'text-[#0500FF]' : 'text-gray-400'
                     )}
                   >
                     {label}
@@ -65,7 +65,7 @@ export default function BottomNav() {
                   {isActive && (
                     <motion.div
                       layoutId="navPill"
-                      className="absolute -bottom-1 w-5 h-[3px] rounded-full bg-[#3375BB]"
+                      className="absolute -bottom-1 w-5 h-[3px] rounded-full bg-[#0500FF]"
                       transition={{ type: 'spring', stiffness: 380, damping: 30 }}
                     />
                   )}

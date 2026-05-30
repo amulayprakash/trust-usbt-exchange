@@ -1,14 +1,15 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { SlidersHorizontal } from 'lucide-react'
 import { motion } from 'framer-motion'
 import BalanceDisplay from '@/components/tokens/BalanceDisplay'
 import ActionBar from '@/components/actions/ActionBar'
 import TokenListItem from '@/components/tokens/TokenListItem'
+import TransactionsSection from '@/components/transactions/TransactionsSection'
 import useWalletStore from '@/store/useWalletStore'
 import useTokenBalances from '@/hooks/useTokenBalances'
-import { useUSBTPrice } from '@/hooks/useTokenPrice'
-
-const TRX_USD_PRICE = 0.12
+import { useUSBTPrice, useTRXPrice } from '@/hooks/useTokenPrice'
+import { cn } from '@/lib/utils'
 
 const TOKEN_METADATA = {
   USBT: { name: 'USBT Token', network: 'Tron' },
@@ -26,22 +27,27 @@ const stagger = {
 }
 
 export default function Home() {
-  const { balances } = useWalletStore()
-  const { data: priceData } = useUSBTPrice()
+  const { balances, address } = useWalletStore()
+  const { data: usbtPriceData } = useUSBTPrice()
+  const { data: trxPriceData } = useTRXPrice()
   const navigate = useNavigate()
+  const [activeMainTab, setActiveMainTab] = useState('Crypto')
 
   useTokenBalances()
 
-  const usbtUSD = priceData?.usd || 0
+  const usbtUSD = usbtPriceData?.usd ?? 0.99
+  const trxUSD = trxPriceData?.usd || 0
+  const trxChange24h = trxPriceData?.change24h || 0
+
   const totalUSD =
     Number(balances.USBT) * usbtUSD +
     Number(balances.USDT) * 1 +
-    Number(balances.TRX) * TRX_USD_PRICE
+    Number(balances.TRX) * trxUSD
 
   const TOKENS_DISPLAY = [
-    { symbol: 'USBT', usdPrice: usbtUSD, change24h: -0.01 },
+    { symbol: 'USBT', usdPrice: usbtUSD, change24h: 0 },
     { symbol: 'USDT', usdPrice: 1, change24h: 0 },
-    { symbol: 'TRX', usdPrice: TRX_USD_PRICE, change24h: 1.2 },
+    { symbol: 'TRX', usdPrice: trxUSD, change24h: trxChange24h },
   ]
 
   return (
@@ -68,7 +74,7 @@ export default function Home() {
           <motion.button
             whileTap={{ scale: 0.95 }}
             onClick={() => navigate('/discover')}
-            className="text-xs text-[#3375BB] font-semibold"
+            className="text-xs text-[#0500FF] font-semibold"
           >
             Learn more →
           </motion.button>
@@ -81,39 +87,56 @@ export default function Home() {
         transition={{ type: 'spring', stiffness: 300, damping: 28 }}
         className="flex items-center border-b border-gray-100 px-5 mt-3"
       >
-        <button className="py-3 mr-6 text-sm font-bold text-gray-900 border-b-2 border-[#3375BB]">
-          Crypto
-        </button>
-        <div className="ml-auto flex items-center gap-2 text-gray-400">
-          <button><SlidersHorizontal size={16} /></button>
-        </div>
+        {['Crypto', 'Transactions'].map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveMainTab(tab)}
+            className={cn(
+              'py-3 mr-6 text-sm font-bold transition-colors border-b-2',
+              activeMainTab === tab
+                ? 'text-gray-900 border-[#0500FF]'
+                : 'text-gray-400 border-transparent'
+            )}
+          >
+            {tab}
+          </button>
+        ))}
+        {activeMainTab === 'Crypto' && (
+          <div className="ml-auto flex items-center gap-2 text-gray-400">
+            <button><SlidersHorizontal size={16} /></button>
+          </div>
+        )}
       </motion.div>
 
-      {/* Token List */}
-      <motion.div
-        variants={stagger}
-        initial="initial"
-        animate="animate"
-        className="mt-1"
-      >
-        {TOKENS_DISPLAY.map(({ symbol, usdPrice, change24h }, i) => (
-          <motion.div
-            key={symbol}
-            variants={fadeUp}
-            transition={{ type: 'spring', stiffness: 300, damping: 28 }}
-          >
-            {i > 0 && <div className="mx-5 border-t border-gray-100" />}
-            <TokenListItem
-              symbol={symbol}
-              name={TOKEN_METADATA[symbol].name}
-              balance={balances[symbol] || '0'}
-              usdPrice={usdPrice}
-              change24h={change24h}
-              networkLabel={symbol !== 'TRX'}
-            />
-          </motion.div>
-        ))}
-      </motion.div>
+      {/* Content */}
+      {activeMainTab === 'Crypto' ? (
+        <motion.div
+          variants={stagger}
+          initial="initial"
+          animate="animate"
+          className="mt-1"
+        >
+          {TOKENS_DISPLAY.map(({ symbol, usdPrice, change24h }, i) => (
+            <motion.div
+              key={symbol}
+              variants={fadeUp}
+              transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+            >
+              {i > 0 && <div className="mx-5 border-t border-gray-100" />}
+              <TokenListItem
+                symbol={symbol}
+                name={TOKEN_METADATA[symbol].name}
+                balance={balances[symbol] || '0'}
+                usdPrice={usdPrice}
+                change24h={change24h}
+                networkLabel={symbol !== 'TRX'}
+              />
+            </motion.div>
+          ))}
+        </motion.div>
+      ) : (
+        <TransactionsSection address={address} />
+      )}
 
 
     </motion.div>

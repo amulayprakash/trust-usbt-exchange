@@ -2,9 +2,9 @@
 @import "tw-animate-css";
 
 @theme {
-  --color-tw-blue: #3375BB;
-  --color-tw-blue-light: #4a8fd4;
-  --color-tw-blue-dark: #2560a0;
+  --color-tw-blue: #0500FF;
+  --color-tw-blue-light: #2e2aff;
+  --color-tw-blue-dark: #0400CC;
   --color-tw-green: #0DB37E;
   --color-tw-red: #E53935;
   --color-tw-dark-bg: #0A0B0D;

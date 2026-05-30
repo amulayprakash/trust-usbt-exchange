@@ -51,7 +51,7 @@ export default function WalletConnectModal({ uri, onClose, onRefresh }) {
             {onRefresh && (
               <button
                 onClick={onRefresh}
-                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-[#3375BB] text-white text-sm font-medium hover:bg-[#2560a0]"
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-[#0500FF] text-white text-sm font-medium hover:bg-[#0400CC]"
               >
                 <RefreshCw size={16} />
                 Refresh

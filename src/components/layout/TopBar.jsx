@@ -57,7 +57,7 @@ export default function TopBar() {
           <span className="absolute inset-0 rounded-full bg-emerald-400" />
         </span>
         {connectionType === 'walletconnect' && (
-          <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#3375BB]/70">WC</span>
+          <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#0500FF]/70">WC</span>
         )}
         <span className="text-sm font-semibold text-gray-900 font-mono">
           {address ? `${address.slice(0, 6)}…${address.slice(-4)}` : 'Connect Wallet'}

@@ -22,7 +22,7 @@ export default function DesktopSidebar() {
               cn(
                 'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors w-full',
                 isActive
-                  ? 'bg-[#3375BB]/10 text-[#3375BB]'
+                  ? 'bg-[#0500FF]/10 text-[#0500FF]'
                   : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
               )
             }
@@ -41,8 +41,8 @@ export default function DesktopSidebar() {
             cn(
               'flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-semibold transition-all shadow-lg shadow-blue-500/20',
               isActive
-                ? 'bg-[#2560a0] text-white'
-                : 'bg-[#3375BB] text-white hover:bg-[#2560a0]'
+                ? 'bg-[#0400CC] text-white'
+                : 'bg-[#0500FF] text-white hover:bg-[#0400CC]'
             )
           }
         >

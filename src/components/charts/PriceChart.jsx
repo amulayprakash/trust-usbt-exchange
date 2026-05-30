@@ -37,11 +37,11 @@ export default function PriceChart({ data = [], height = 180, positive = true })
       height,
     })
 
-    const color = positive ? '#3375BB' : '#E53935'
+    const color = positive ? '#0DB37E' : '#E53935'
 
     seriesRef.current = chartRef.current.addSeries(AreaSeries, {
       lineColor: color,
-      topColor: positive ? 'rgba(51, 117, 187, 0.2)' : 'rgba(229, 57, 53, 0.2)',
+      topColor: positive ? 'rgba(13, 179, 126, 0.2)' : 'rgba(229, 57, 53, 0.2)',
       bottomColor: 'rgba(255,255,255,0)',
       lineWidth: 2,
       priceLineVisible: false,

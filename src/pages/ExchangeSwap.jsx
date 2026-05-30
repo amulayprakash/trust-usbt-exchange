@@ -139,14 +139,14 @@ export default function ExchangeSwap() {
             href={tronscanTxUrl(txHashOut)}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-sm text-[#3375BB] font-semibold"
+            className="text-sm text-[#0500FF] font-semibold"
           >
             View on Tronscan ↗
           </a>
         )}
         <button
           onClick={() => navigate('/')}
-          className="w-full py-4 bg-[#3375BB] text-white rounded-2xl font-bold text-base"
+          className="w-full py-4 bg-[#0500FF] text-white rounded-2xl font-bold text-base"
         >
           Done
         </button>
@@ -185,7 +185,7 @@ export default function ExchangeSwap() {
         )}
         <button
           onClick={() => navigate('/')}
-          className="w-full py-4 bg-[#3375BB] text-white rounded-2xl font-bold text-base"
+          className="w-full py-4 bg-[#0500FF] text-white rounded-2xl font-bold text-base"
         >
           Back to Home
         </button>
@@ -197,7 +197,7 @@ export default function ExchangeSwap() {
   if (step === 'processing') {
     return (
       <div className="flex flex-col items-center justify-center flex-1 p-6 gap-5">
-        <Loader2 size={48} className="animate-spin text-[#3375BB]" />
+        <Loader2 size={48} className="animate-spin text-[#0500FF]" />
         <div className="text-center">
           <h2 className="text-xl font-bold text-gray-900 mb-1">Processing Swap</h2>
           <p className="text-sm text-gray-500">Sending {toToken} to your wallet...</p>
@@ -216,7 +216,7 @@ export default function ExchangeSwap() {
         >
           <ArrowLeft size={20} />
         </button>
-        <span className="text-base font-bold text-gray-900 border-b-2 border-[#3375BB] pb-0.5">
+        <span className="text-base font-bold text-gray-900 border-b-2 border-[#0500FF] pb-0.5">
           Exchange Swap
         </span>
         <div className="w-9" />
@@ -244,7 +244,7 @@ export default function ExchangeSwap() {
                     const mult = pct === 'Max' ? 1 : 0.5
                     setAmount((Number(balance) * mult).toFixed(6))
                   }}
-                  className="px-2 py-0.5 bg-[#3375BB] text-white rounded-full text-[10px] font-semibold"
+                  className="px-2 py-0.5 bg-[#0500FF] text-white rounded-full text-[10px] font-semibold"
                 >
                   {pct}
                 </button>
@@ -271,7 +271,7 @@ export default function ExchangeSwap() {
           <motion.button
             animate={{ rotate: rotated ? 180 : 0 }}
             onClick={handleFlip}
-            className="w-10 h-10 bg-white rounded-full border-2 border-gray-300 flex items-center justify-center shadow-sm hover:border-[#3375BB] transition-colors"
+            className="w-10 h-10 bg-white rounded-full border-2 border-gray-300 flex items-center justify-center shadow-sm hover:border-[#0500FF] transition-colors"
           >
             <ArrowUpDown size={18} className="text-gray-600" />
           </motion.button>
@@ -334,7 +334,7 @@ export default function ExchangeSwap() {
         {direction === 'usdt_to_usbt' && (
           <div className="mt-3 mb-4">
             <div className="flex items-center gap-2 mb-2">
-              <Gift size={14} className="text-[#3375BB]" />
+              <Gift size={14} className="text-[#0500FF]" />
               <span className="text-xs font-bold text-gray-600 uppercase tracking-wide">Buy More, Get More</span>
             </div>
             <div className="grid grid-cols-3 gap-2">
@@ -384,7 +384,7 @@ export default function ExchangeSwap() {
           className={cn(
             'w-full py-4 rounded-2xl font-bold text-lg transition-all',
             amountValid && step === 'idle'
-              ? 'bg-[#3375BB] text-white hover:bg-[#2560a0] active:scale-[0.98]'
+              ? 'bg-[#0500FF] text-white hover:bg-[#0400CC] active:scale-[0.98]'
               : 'bg-gray-200 text-gray-400 cursor-not-allowed'
           )}
         >
@@ -440,7 +440,7 @@ export default function ExchangeSwap() {
                 </button>
                 <button
                   onClick={handleSwap}
-                  className="flex-1 py-3.5 bg-[#3375BB] text-white rounded-2xl font-bold text-base hover:bg-[#2560a0]"
+                  className="flex-1 py-3.5 bg-[#0500FF] text-white rounded-2xl font-bold text-base hover:bg-[#0400CC]"
                 >
                   Confirm
                 </button>

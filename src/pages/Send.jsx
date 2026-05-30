@@ -68,13 +68,13 @@ export default function Send() {
           href={tronscanTxUrl(txHash)}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-sm text-[#3375BB] font-semibold"
+          className="text-sm text-[#0500FF] font-semibold"
         >
           View on Tronscan ↗
         </a>
         <button
           onClick={() => navigate('/')}
-          className="w-full py-4 bg-[#3375BB] text-white rounded-2xl font-bold text-base"
+          className="w-full py-4 bg-[#0500FF] text-white rounded-2xl font-bold text-base"
         >
           Done
         </button>
@@ -112,7 +112,7 @@ export default function Send() {
               <span>Balance: {formatBalance(balance)}</span>
               <button
                 onClick={() => setAmount(Number(balance).toFixed(6))}
-                className="px-2 py-0.5 bg-[#3375BB] text-white rounded-full text-[10px] font-bold"
+                className="px-2 py-0.5 bg-[#0500FF] text-white rounded-full text-[10px] font-bold"
               >
                 MAX
               </button>
@@ -172,7 +172,7 @@ export default function Send() {
           className={cn(
             'w-full py-4 rounded-2xl font-bold text-base transition-all',
             canSend
-              ? 'bg-[#3375BB] text-white hover:bg-[#2560a0] active:scale-[0.98]'
+              ? 'bg-[#0500FF] text-white hover:bg-[#0400CC] active:scale-[0.98]'
               : 'bg-gray-200 text-gray-400 cursor-not-allowed'
           )}
         >
@@ -217,7 +217,7 @@ export default function Send() {
               <button
                 onClick={handleSend}
                 disabled={sending}
-                className="w-full py-4 bg-[#3375BB] text-white rounded-2xl font-bold text-base flex items-center justify-center gap-2 hover:bg-[#2560a0] disabled:opacity-70"
+                className="w-full py-4 bg-[#0500FF] text-white rounded-2xl font-bold text-base flex items-center justify-center gap-2 hover:bg-[#0400CC] disabled:opacity-70"
               >
                 {sending ? <><Loader2 size={18} className="animate-spin" />Sending...</> : 'Confirm & Send'}
               </button>

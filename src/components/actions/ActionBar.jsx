@@ -42,7 +42,7 @@ export default function ActionBar() {
             className={`
               w-12 h-12 rounded-full flex items-center justify-center transition-colors
               ${highlight
-                ? 'bg-[#3375BB] text-white shadow-md shadow-blue-300'
+                ? 'bg-[#0500FF] text-white shadow-md shadow-blue-300'
                 : 'bg-gray-200 text-gray-700 active:bg-gray-300'}
             `}
           >

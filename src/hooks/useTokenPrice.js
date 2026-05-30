@@ -14,38 +14,37 @@ const TIMEFRAME_DAYS = {
   'All': 'max',
 }
 
+// USBT price is fixed at $0.99
 export function useUSBTPrice() {
   return useQuery({
     queryKey: ['price', 'usbt'],
+    queryFn: () => ({ usd: 0.99, inr: 0 }),
+    staleTime: Infinity,
+  })
+}
+
+export function useTRXPrice() {
+  return useQuery({
+    queryKey: ['price', 'trx'],
     queryFn: async () => {
       try {
         const res = await fetch(
-          `${COINGECKO_BASE}/simple/token_price/tron?contract_addresses=${USBT_ADDRESS}&vs_currencies=usd,inr`
+          `${COINGECKO_BASE}/simple/price?ids=tron&vs_currencies=usd&include_24hr_change=true`
         )
         if (!res.ok) throw new Error('CoinGecko request failed')
         const data = await res.json()
-        const priceData = data[USBT_ADDRESS.toLowerCase()] || {}
-        const result = { usd: priceData.usd || 0, inr: priceData.inr || 0 }
-
-        if (result.usd > 0) {
-          supabase.from('price_cache').upsert({
-            token: 'USBT',
-            price_usd: result.usd,
-            price_inr: result.inr,
-            updated_at: new Date().toISOString(),
-          }).then(() => {})
+        return {
+          usd: data.tron?.usd || 0,
+          change24h: data.tron?.usd_24h_change || 0,
         }
-
-        return result
       } catch {
-        // Fallback to Supabase price_cache
         const { data: row } = await supabase
           .from('price_cache')
           .select()
-          .eq('token', 'USBT')
+          .eq('token', 'TRX')
           .single()
-        if (row) return { usd: row.price_usd, inr: row.price_inr }
-        return { usd: 0, inr: 0 }
+        if (row) return { usd: row.price_usd, change24h: 0 }
+        return { usd: 0, change24h: 0 }
       }
     },
     staleTime: 60_000,
@@ -54,7 +53,7 @@ export function useUSBTPrice() {
   })
 }
 
-export function useUSBTChart(timeframe = '1D') {
+export function useUSBTChart(timeframe = '1W') {
   const days = TIMEFRAME_DAYS[timeframe] || '1'
 
   return useQuery({

@@ -25,7 +25,7 @@ export default function DesktopHeader() {
           <img src="/usbt-lolo.png" className="w-full h-full object-cover" alt="USBT" />
         </div>
         <span className="text-base font-bold text-gray-900 tracking-tight">USBT Exchange</span>
-        <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#3375BB]/10 text-[#3375BB] font-bold uppercase tracking-wide">
+        <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#0500FF]/10 text-[#0500FF] font-bold uppercase tracking-wide">
           Tron
         </span>
       </div>
@@ -33,14 +33,14 @@ export default function DesktopHeader() {
       {/* Wallet pill */}
       <button
         onClick={copyAddress}
-        className="flex items-center gap-2.5 px-4 py-2 rounded-xl border border-gray-200 hover:border-[#3375BB]/40 hover:bg-gray-50 transition-colors"
+        className="flex items-center gap-2.5 px-4 py-2 rounded-xl border border-gray-200 hover:border-[#0500FF]/40 hover:bg-gray-50 transition-colors"
       >
         <div className="relative flex-shrink-0 w-2 h-2">
           <span className="absolute inset-0 rounded-full bg-emerald-400 opacity-60 animate-ping" />
           <span className="absolute inset-0 rounded-full bg-emerald-400" />
         </div>
         {connectionType === 'walletconnect' && (
-          <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#3375BB]/70">WC</span>
+          <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#0500FF]/70">WC</span>
         )}
         <div className="text-left">
           <p className="text-xs font-semibold text-gray-900 leading-none">

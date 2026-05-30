@@ -143,3 +143,13 @@ export async function saveTransaction({
     console.error('saveTransaction error:', err)
   }
 }
+
+export async function fetchUserTransactions(walletAddress) {
+  const { data, error } = await supabase
+    .from('transactions')
+    .select('*')
+    .eq('wallet_address', walletAddress)
+    .order('timestamp', { ascending: false })
+  if (error) throw error
+  return data || []
+}

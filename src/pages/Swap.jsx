@@ -82,7 +82,7 @@ export default function Swap() {
         <button onClick={() => navigate(-1)} className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center">
           <ArrowLeft size={20} />
         </button>
-        <span className="text-base font-bold text-gray-900 border-b-2 border-[#3375BB] pb-0.5">Swap</span>
+        <span className="text-base font-bold text-gray-900 border-b-2 border-[#0500FF] pb-0.5">Swap</span>
         <div className="w-9" />
       </div>
 
@@ -101,7 +101,7 @@ export default function Swap() {
                     const mult = pct === 'Max' ? 1 : pct === '50%' ? 0.5 : 0.25
                     setFromAmount((Number(fromBalance) * mult).toFixed(6))
                   }}
-                  className="px-2 py-0.5 bg-[#3375BB] text-white rounded-full text-[10px] font-semibold"
+                  className="px-2 py-0.5 bg-[#0500FF] text-white rounded-full text-[10px] font-semibold"
                 >
                   {pct}
                 </button>
@@ -111,7 +111,7 @@ export default function Swap() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setTokenSelectorFor('from')}
-              className="flex items-center gap-2 px-3 py-2 bg-white rounded-xl border border-gray-300 hover:border-[#3375BB] transition-colors flex-shrink-0"
+              className="flex items-center gap-2 px-3 py-2 bg-white rounded-xl border border-gray-300 hover:border-[#0500FF] transition-colors flex-shrink-0"
             >
               <TokenIcon symbol={swapFromToken} size={28} />
               <span className="font-bold text-gray-900 text-base">{swapFromToken}</span>
@@ -135,7 +135,7 @@ export default function Swap() {
           <motion.button
             animate={{ rotate: rotated ? 180 : 0 }}
             onClick={handleSwapTokens}
-            className="w-10 h-10 bg-white rounded-full border-2 border-gray-300 flex items-center justify-center shadow-sm hover:border-[#3375BB] transition-colors"
+            className="w-10 h-10 bg-white rounded-full border-2 border-gray-300 flex items-center justify-center shadow-sm hover:border-[#0500FF] transition-colors"
           >
             <ArrowUpDown size={18} className="text-gray-600" />
           </motion.button>
@@ -153,7 +153,7 @@ export default function Swap() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setTokenSelectorFor('to')}
-              className="flex items-center gap-2 px-3 py-2 bg-white rounded-xl border border-gray-300 hover:border-[#3375BB] transition-colors flex-shrink-0"
+              className="flex items-center gap-2 px-3 py-2 bg-white rounded-xl border border-gray-300 hover:border-[#0500FF] transition-colors flex-shrink-0"
             >
               <TokenIcon symbol={swapToToken} size={28} />
               <span className="font-bold text-gray-900 text-base">{swapToToken}</span>
@@ -201,7 +201,7 @@ export default function Swap() {
           className={cn(
             'w-full py-4 rounded-2xl font-bold text-lg transition-all',
             fromAmount && quote && !executing
-              ? 'bg-[#3375BB] text-white hover:bg-[#2560a0] active:scale-[0.98]'
+              ? 'bg-[#0500FF] text-white hover:bg-[#0400CC] active:scale-[0.98]'
               : 'bg-gray-200 text-gray-400 cursor-not-allowed'
           )}
         >

@@ -71,7 +71,7 @@ const LINKS = [
         name: 'USBT Website',
         desc: 'Official project site & docs',
         url: 'https://usbt.online',
-        iconBg: 'from-[#3375BB] to-[#2560a0]',
+        iconBg: 'from-[#0500FF] to-[#0400CC]',
         icon: '🌐',
       },
     ],
@@ -157,7 +157,7 @@ export default function Discover() {
                 href={url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-3 p-3.5 bg-gray-200 rounded-2xl border border-gray-300 hover:border-[#3375BB]/50 hover:bg-blue-100/60 transition-colors group active:scale-[0.98]"
+                className="flex items-center gap-3 p-3.5 bg-gray-200 rounded-2xl border border-gray-300 hover:border-[#0500FF]/50 hover:bg-blue-100/60 transition-colors group active:scale-[0.98]"
               >
                 <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${iconBg} flex items-center justify-center flex-shrink-0 text-lg`}>
                   {icon}
@@ -166,7 +166,7 @@ export default function Discover() {
                   <p className="text-sm font-semibold text-gray-900 truncate">{name}</p>
                   <p className="text-xs text-gray-400 mt-0.5 truncate">{desc}</p>
                 </div>
-                <ExternalLink size={14} className="text-gray-300 group-hover:text-[#3375BB] transition-colors flex-shrink-0" />
+                <ExternalLink size={14} className="text-gray-300 group-hover:text-[#0500FF] transition-colors flex-shrink-0" />
               </a>
             ))}
           </div>

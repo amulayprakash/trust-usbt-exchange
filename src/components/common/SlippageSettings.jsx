@@ -45,8 +45,8 @@ export default function SlippageSettings({ onClose }) {
               className={cn(
                 'flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-colors',
                 !useCustom && slippage === p
-                  ? 'bg-[#3375BB] text-white border-[#3375BB]'
-                  : 'bg-gray-200 text-gray-700 border-gray-300 hover:border-[#3375BB]'
+                  ? 'bg-[#0500FF] text-white border-[#0500FF]'
+                  : 'bg-gray-200 text-gray-700 border-gray-300 hover:border-[#0500FF]'
               )}
             >
               {p}%
@@ -61,7 +61,7 @@ export default function SlippageSettings({ onClose }) {
             onChange={(e) => handleCustom(e.target.value)}
             className={cn(
               'flex-1 px-3 py-2.5 rounded-xl border text-sm font-medium outline-none',
-              useCustom ? 'border-[#3375BB] bg-blue-100' : 'border-gray-300 bg-gray-200'
+              useCustom ? 'border-[#0500FF] bg-blue-100' : 'border-gray-300 bg-gray-200'
             )}
           />
           <span className="text-gray-500 font-medium">%</span>
@@ -71,7 +71,7 @@ export default function SlippageSettings({ onClose }) {
         </p>
         <button
           onClick={onClose}
-          className="w-full mt-4 py-3 bg-[#3375BB] text-white rounded-2xl font-semibold text-sm hover:bg-[#2560a0] transition-colors"
+          className="w-full mt-4 py-3 bg-[#0500FF] text-white rounded-2xl font-semibold text-sm hover:bg-[#0400CC] transition-colors"
         >
           Done
         </button>

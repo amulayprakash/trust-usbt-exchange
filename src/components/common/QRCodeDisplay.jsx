@@ -29,7 +29,7 @@ export default function QRCodeDisplay({ address, size = 200 }) {
       </div>
       <button
         onClick={copy}
-        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[#3375BB] text-white font-medium text-sm hover:bg-[#2560a0] transition-colors active:scale-[0.98]"
+        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[#0500FF] text-white font-medium text-sm hover:bg-[#0400CC] transition-colors active:scale-[0.98]"
       >
         {copied ? <Check size={16} /> : <Copy size={16} />}
         {copied ? 'Copied!' : 'Copy Address'}

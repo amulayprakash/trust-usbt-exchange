@@ -4,7 +4,11 @@ import { cn } from '@/lib/utils'
 const LOGO_SRCS = {
   USBT: '/tokens/usbt.png',
   USDT: '/tokens/usdt.png',
-  TRX:  '/tokens/trx.png',
+  TRX:  '/tron.png',
+}
+
+const LOGO_SCALE = {
+  TRX: 0.78,
 }
 
 const FALLBACK_COLORS = {
@@ -18,17 +22,19 @@ export default function TokenIcon({ symbol, size = 40, className }) {
   const src = LOGO_SRCS[symbol]
 
   if (src && !errored) {
+    const scale = LOGO_SCALE[symbol] || 1
+    const imgSize = Math.round(size * scale)
     return (
       <div
         style={{ width: size, height: size }}
-        className={cn('flex-shrink-0 flex items-center justify-center', className)}
+        className={cn('flex-shrink-0 flex items-center justify-center rounded-full overflow-hidden', className)}
       >
         <img
           src={src}
           alt={symbol}
-          width={size}
-          height={size}
-          style={{ objectFit: 'contain', display: 'block' }}
+          width={imgSize}
+          height={imgSize}
+          style={{ objectFit: 'cover', display: 'block' }}
           onError={() => setErrored(true)}
         />
       </div>
