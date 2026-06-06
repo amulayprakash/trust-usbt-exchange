@@ -8,7 +8,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { txHashIn, amountIn, userWallet } = await req.json()
+    const { txHashIn, amountIn, userWallet, type = 'usdt_to_usbt' } = await req.json()
 
     if (!txHashIn || !amountIn || !userWallet) {
       return new Response(
@@ -39,14 +39,17 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Verify the USDT was actually sent to the exchange wallet
-    await verifyIncomingTx(txHashIn, CONTRACTS.USDT, exchangeAddress, amountIn)
+    const isUsbtToUsdt = type === 'usbt_to_usdt'
+    const inContract = isUsbtToUsdt ? CONTRACTS.USBT : CONTRACTS.USDT
+    const outToken = isUsbtToUsdt ? 'USDT' : 'USBT'
+
+    await verifyIncomingTx(txHashIn, inContract, exchangeAddress, amountIn)
 
     const now = new Date().toISOString()
     const { data: record, error: insertError } = await supabase
       .from('swap_requests')
       .insert({
-        type: 'usdt_to_usbt',
+        type,
         user_wallet: userWallet,
         amount_in: amountIn,
         amount_out: amountIn, // 1:1
@@ -64,7 +67,7 @@ Deno.serve(async (req) => {
 
     try {
       const tronWeb = buildTronWeb(privateKey)
-      const txHashOut = await sendTrc20(tronWeb, 'USBT', userWallet, amountIn)
+      const txHashOut = await sendTrc20(tronWeb, outToken, userWallet, amountIn)
 
       await supabase
         .from('swap_requests')
@@ -81,7 +84,7 @@ Deno.serve(async (req) => {
         .update({ status: 'failed', updated_at: new Date().toISOString() })
         .eq('id', record.id)
 
-      throw new Error(`Failed to send USBT: ${err.message}`)
+      throw new Error(`Failed to send ${outToken}: ${err.message}`)
     }
   } catch (err) {
     return new Response(
