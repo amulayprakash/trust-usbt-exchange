@@ -122,21 +122,29 @@ async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress) {
 
   if (!signedTx) throw new Error('No signed transaction received. Please try again.')
 
-  // Trust Wallet may return just the signature string, or the full signed tx object.
-  // Normalise to a full tx with signature array before broadcasting.
+  // Normalise the signed tx to a broadcastable object.
+  // Trust Wallet may return: a signature string, { signature: '...' }, { txID, raw_data, signature: [...] }
   let broadcastTx
   if (typeof signedTx === 'string') {
-    // Only a signature hex string — attach it to the original unsigned tx
+    // Raw signature hex string — combine with original unsigned tx
     broadcastTx = { ...unsignedTx, signature: [signedTx] }
-  } else if (Array.isArray(signedTx?.signature) && signedTx.signature.length > 0) {
-    // Full signed tx object
-    broadcastTx = signedTx
-  } else if (typeof signedTx?.signature === 'string') {
-    // Signature as a string inside the tx object
-    broadcastTx = { ...signedTx, signature: [signedTx.signature] }
+  } else if (signedTx && typeof signedTx === 'object') {
+    const rawSig = signedTx.signature
+    const hasSig = Array.isArray(rawSig) ? rawSig.length > 0 : (typeof rawSig === 'string' && rawSig.length > 0)
+    const sigArr = Array.isArray(rawSig) ? rawSig : (rawSig ? [rawSig] : [])
+
+    if (signedTx.txID && signedTx.raw_data && hasSig) {
+      // Full signed tx returned — use it directly
+      broadcastTx = { ...signedTx, signature: sigArr }
+    } else if (hasSig) {
+      // Only signature field present — merge with original unsigned tx for required fields
+      broadcastTx = { ...unsignedTx, signature: sigArr }
+    } else {
+      // Unknown shape — merge everything and let TronGrid report the error
+      broadcastTx = { ...unsignedTx, ...signedTx }
+    }
   } else {
-    // Fallback: attach any returned data as signature
-    broadcastTx = { ...unsignedTx, ...(typeof signedTx === 'object' ? signedTx : {}) }
+    throw new Error('Unexpected signing result from wallet. Please try again.')
   }
 
   // Step 3: broadcast the signed transaction
@@ -148,12 +156,16 @@ async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress) {
 
   const broadcastResult = await broadcastRes.json()
   if (!broadcastResult.result) {
-    // TronGrid hex-encodes error messages — decode them for a readable error
-    let errMsg = broadcastResult.message || broadcastResult.code || ''
+    // TronGrid hex-encodes error messages — decode them
+    let errMsg = broadcastResult.message || broadcastResult.Error || ''
     if (errMsg && /^[0-9a-fA-F]{8,}$/.test(errMsg)) {
       try { errMsg = Buffer.from(errMsg, 'hex').toString('utf8') } catch {}
     }
-    throw new Error(errMsg || `Broadcast failed (code: ${broadcastResult.code || 'unknown'})`)
+    // Include debug fields so we can diagnose from the error toast
+    const sigShape = typeof signedTx === 'string' ? 'string'
+      : `obj{${Object.keys(signedTx || {}).join(',')}}`
+    const tgCode = broadcastResult.code || broadcastResult.Code || 'none'
+    throw new Error(`${errMsg || 'Broadcast failed'} [sig:${sigShape} code:${tgCode}]`)
   }
 
   return broadcastResult.txid || broadcastTx.txID
