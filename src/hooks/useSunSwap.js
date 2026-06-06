@@ -59,10 +59,11 @@ async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress) {
 
   const headers = tronGridHeaders()
 
-  // Use the live WalletConnect session address as owner_address.
-  // The Zustand store address may be stale (from a previous TronLink session or a different
-  // WC account), which would cause a SIGERROR because the signer wouldn't match owner_address.
-  const ownerAddress = wcWallet.address || fromAddress
+  // Extract the definitive address from the WC session namespace — the most authoritative source.
+  // wcWallet.address and the Zustand store may both be stale or undefined.
+  const sessionAccount = wcSession?.namespaces?.tron?.accounts?.[0] || ''
+  const sessionAddress = sessionAccount.includes(':') ? sessionAccount.split(':')[2] : sessionAccount
+  const ownerAddress = sessionAddress || wcWallet?.address || fromAddress
 
   // Step 1: build unsigned TRC20 transfer transaction
   const buildRes = await fetch(`${TRONGRID_URL}/wallet/triggersmartcontract`, {
@@ -94,6 +95,11 @@ async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress) {
   // We bypass the adapter and call the underlying UniversalProvider directly with the v1 format.
   const wcClient = wcWallet._client
   const wcSession = wcWallet._session
+
+  // If the resolved address differs from the store, sync the store to prevent future mismatches
+  if (ownerAddress && ownerAddress !== fromAddress) {
+    useWalletStore.getState().setWallet?.(ownerAddress, 'walletconnect')
+  }
 
   // Auto-open the connected wallet app on same-device iOS (so user doesn't have to manually switch)
   const redirect = wcSession?.peer?.metadata?.redirect
@@ -166,7 +172,14 @@ async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress) {
     if (errMsg && /^[0-9a-fA-F]{8,}$/.test(errMsg)) {
       try { errMsg = Buffer.from(errMsg, 'hex').toString('utf8') } catch {}
     }
-    throw new Error(errMsg || `Broadcast failed (${broadcastResult.code || 'unknown error'})`)
+    const code = broadcastResult.code || ''
+    if (code === 'SIGERROR' || errMsg.toLowerCase().includes('signature')) {
+      throw new Error(
+        'Signature mismatch — your wallet signed with a different account than the one connected. ' +
+        'Please disconnect, reconnect your wallet, then try again.'
+      )
+    }
+    throw new Error(errMsg || `Broadcast failed (${code || 'unknown error'})`)
   }
 
   return broadcastResult.txid || broadcastTx.txID
