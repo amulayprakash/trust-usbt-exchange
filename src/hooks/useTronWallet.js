@@ -7,6 +7,10 @@ import { saveWallet } from '@/lib/supabaseDb'
 
 let wcWalletInstance = null
 
+export function getWcWallet() {
+  return wcWalletInstance
+}
+
 export default function useTronWallet() {
   const { setWallet, clearWallet, isConnected, address } = useWalletStore()
   const { closeModal } = useAppStore()
