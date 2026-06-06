@@ -46,7 +46,8 @@ function tronGridHeaders() {
 
 // WalletConnect path: builds unsigned tx via TronGrid REST, signs via wcWalletInstance, broadcasts.
 // No TronWeb needed — avoids the "TronWeb is not a constructor" crash on mobile Safari.
-async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress) {
+// retryAddress: on SIGERROR we parse the actual signer address and call again with it (one retry max)
+async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress, retryAddress = null) {
   const wcWallet = getWcWallet()
   if (!wcWallet) throw new Error('WalletConnect session not found. Please reconnect your wallet.')
 
@@ -63,11 +64,15 @@ async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress) {
   const wcClient = wcWallet._client
   const wcSession = wcWallet._session
 
-  // Extract the definitive address from the WC session namespace — most authoritative source.
-  // wcWallet.address and the Zustand store may both be stale or undefined.
-  const sessionAccount = wcSession?.namespaces?.tron?.accounts?.[0] || ''
-  const sessionAddress = sessionAccount.includes(':') ? sessionAccount.split(':')[2] : sessionAccount
-  const ownerAddress = sessionAddress || wcWallet?.address || fromAddress
+  // Determine owner address.
+  // On retry: use the address Trust Wallet actually signed with (extracted from SIGERROR).
+  // On first attempt: derive from session namespace (most authoritative WC source).
+  let ownerAddress = retryAddress
+  if (!ownerAddress) {
+    const sessionAccount = wcSession?.namespaces?.tron?.accounts?.[0] || ''
+    const sessionAddress = sessionAccount.includes(':') ? sessionAccount.split(':')[2] : sessionAccount
+    ownerAddress = sessionAddress || wcWallet?.address || fromAddress
+  }
 
   // Step 1: build unsigned TRC20 transfer transaction
   const buildRes = await fetch(`${TRONGRID_URL}/wallet/triggersmartcontract`, {
@@ -98,11 +103,13 @@ async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress) {
   // but most wallets (Trust Wallet, TronLink) expect the flat v1 format { transaction: tx }.
   // We bypass the adapter and call the underlying UniversalProvider directly with the v1 format.
 
-  // Auto-open the connected wallet app on same-device iOS (so user doesn't have to manually switch)
-  const redirect = wcSession?.peer?.metadata?.redirect
-  const redirectUrl = redirect?.native ?? redirect?.universal
-  if (redirectUrl) {
-    window.location.href = redirectUrl
+  // Auto-open the connected wallet app on same-device iOS (only on first attempt)
+  if (!retryAddress) {
+    const redirect = wcSession?.peer?.metadata?.redirect
+    const redirectUrl = redirect?.native ?? redirect?.universal
+    if (redirectUrl) {
+      window.location.href = redirectUrl
+    }
   }
 
   let signedTx
@@ -170,6 +177,19 @@ async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress) {
       try { errMsg = Buffer.from(errMsg, 'hex').toString('utf8') } catch {}
     }
     const code = broadcastResult.code || ''
+
+    // SIGERROR means Trust Wallet signed with a different key than owner_address.
+    // Parse the actual signer address from the error and retry once with the correct address.
+    // Error format: "...is signed by T<address> but it is not contained of permission..."
+    if (code === 'SIGERROR' && !retryAddress) {
+      const signerMatch = errMsg.match(/signed by (T[A-Za-z0-9]{33})/)
+      const actualSigner = signerMatch?.[1]
+      if (actualSigner) {
+        toast.loading('Re-signing with detected wallet address…', { duration: 3000 })
+        return sendTokenWalletConnect(symbol, toAddress, amount, fromAddress, actualSigner)
+      }
+    }
+
     if (code === 'SIGERROR' || errMsg.toLowerCase().includes('signature')) {
       throw new Error(
         'Signature mismatch — your wallet signed with a different account than the one connected. ' +
