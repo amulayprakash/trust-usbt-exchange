@@ -28,6 +28,13 @@ function getBonusRate(amount) {
 
 const EXCHANGE_ADDRESS = import.meta.env.VITE_EXCHANGE_WALLET_ADDRESS
 
+function getAmountFontSize(val) {
+  const len = String(val || '').length
+  if (len > 12) return 'text-base'
+  if (len > 8)  return 'text-xl'
+  return 'text-3xl'
+}
+
 export default function ExchangeSwap() {
   const navigate = useNavigate()
   const { address, balances } = useWalletStore()
@@ -219,7 +226,10 @@ export default function ExchangeSwap() {
               placeholder="0"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="flex-1 min-w-0 text-right text-3xl font-bold text-gray-900 bg-transparent outline-none placeholder:text-gray-400"
+              className={cn(
+                'flex-1 min-w-0 text-right font-bold text-gray-900 bg-transparent outline-none placeholder:text-gray-400 transition-[font-size] duration-150',
+                getAmountFontSize(amount)
+              )}
             />
           </div>
         </div>
@@ -245,8 +255,11 @@ export default function ExchangeSwap() {
               <TokenIcon symbol={toToken} size={28} />
               <span className="font-bold text-gray-900 text-base">{toToken}</span>
             </div>
-            <div className="flex-1 flex flex-col items-end">
-              <span className="text-3xl font-bold text-gray-900 truncate">
+            <div className="flex-1 min-w-0 flex flex-col items-end">
+              <span className={cn(
+                'font-bold text-gray-900 transition-[font-size] duration-150',
+                getAmountFontSize(amount && Number(amount) > 0 ? receiveAmount.toFixed(6) : '0')
+              )}>
                 {amount && Number(amount) > 0 ? receiveAmount.toFixed(6) : '0'}
               </span>
               {bonusRate > 0 && Number(amount) > 0 && (
