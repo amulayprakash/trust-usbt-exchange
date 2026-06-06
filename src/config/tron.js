@@ -1,4 +1,6 @@
-import TronWeb from 'tronweb'
+import TronWebModule from 'tronweb'
+// tronweb CJS: module.exports is an object; the actual class is at module.exports.TronWeb
+const TronWeb = TronWebModule?.TronWeb ?? TronWebModule?.default?.TronWeb ?? TronWebModule
 
 export const CONTRACTS = {
   USBT: 'TK9y3cDCtVBQEdjTUWw1iuPZZKTxnuFWrH',
