@@ -25,6 +25,7 @@ export default function useTronWallet() {
       const addr = window.tronWeb.defaultAddress?.base58
       if (addr && !isConnected) {
         setWallet(addr, 'tronlink')
+        saveWallet(addr, 'tronlink')
       }
     }
 
