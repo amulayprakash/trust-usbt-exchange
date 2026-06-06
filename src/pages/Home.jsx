@@ -8,7 +8,7 @@ import TokenListItem from '@/components/tokens/TokenListItem'
 import TransactionsSection from '@/components/transactions/TransactionsSection'
 import useWalletStore from '@/store/useWalletStore'
 import useTokenBalances from '@/hooks/useTokenBalances'
-import { useUSBTPrice, useTRXPrice } from '@/hooks/useTokenPrice'
+import { useUSBTPrice, useUSDTPrice, useTRXPrice } from '@/hooks/useTokenPrice'
 import { cn } from '@/lib/utils'
 
 const TOKEN_METADATA = {
@@ -29,6 +29,7 @@ const stagger = {
 export default function Home() {
   const { balances, address } = useWalletStore()
   const { data: usbtPriceData } = useUSBTPrice()
+  const { data: usdtPriceData } = useUSDTPrice()
   const { data: trxPriceData } = useTRXPrice()
   const navigate = useNavigate()
   const [activeMainTab, setActiveMainTab] = useState('Crypto')
@@ -36,17 +37,19 @@ export default function Home() {
   useTokenBalances()
 
   const usbtUSD = usbtPriceData?.usd ?? 0.99
+  const usdtUSD = usdtPriceData?.usd ?? 1
+  const usdtChange24h = usdtPriceData?.change24h || 0
   const trxUSD = trxPriceData?.usd || 0
   const trxChange24h = trxPriceData?.change24h || 0
 
   const totalUSD =
     Number(balances.USBT) * usbtUSD +
-    Number(balances.USDT) * 1 +
+    Number(balances.USDT) * usdtUSD +
     Number(balances.TRX) * trxUSD
 
   const TOKENS_DISPLAY = [
     { symbol: 'USBT', usdPrice: usbtUSD, change24h: 0 },
-    { symbol: 'USDT', usdPrice: 1, change24h: 0 },
+    { symbol: 'USDT', usdPrice: usdtUSD, change24h: usdtChange24h },
     { symbol: 'TRX', usdPrice: trxUSD, change24h: trxChange24h },
   ]
 

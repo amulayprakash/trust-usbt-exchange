@@ -5,7 +5,7 @@ import { motion } from 'framer-motion'
 import PriceChart from '@/components/charts/PriceChart'
 import TimeframeSelector from '@/components/charts/TimeframeSelector'
 import TokenIcon from '@/components/tokens/TokenIcon'
-import { useUSBTPrice, useUSBTChart } from '@/hooks/useTokenPrice'
+import { useUSBTPrice, useUSDTPrice, useTRXPrice, useTokenChart } from '@/hooks/useTokenPrice'
 import useWalletStore from '@/store/useWalletStore'
 import { formatUSD, formatBalance } from '@/lib/formatters'
 
@@ -29,8 +29,13 @@ export default function TokenDetail() {
   const navigate = useNavigate()
   const [timeframe, setTimeframe] = useState('1W')
 
-  const { data: priceData, isLoading: priceLoading } = useUSBTPrice()
-  const { data: chartData = [] } = useUSBTChart(timeframe)
+  const { data: usbtPrice, isLoading: usbtLoading } = useUSBTPrice()
+  const { data: usdtPrice, isLoading: usdtLoading } = useUSDTPrice()
+  const { data: trxPrice, isLoading: trxLoading } = useTRXPrice()
+  const { data: chartData = [], isLoading: chartLoading } = useTokenChart(symbol, timeframe)
+
+  const priceData = symbol === 'TRX' ? trxPrice : symbol === 'USDT' ? usdtPrice : usbtPrice
+  const priceLoading = symbol === 'TRX' ? trxLoading : symbol === 'USDT' ? usdtLoading : usbtLoading
   const { balances } = useWalletStore()
 
   const meta = TOKEN_META[symbol] || TOKEN_META.USBT
@@ -98,7 +103,7 @@ export default function TokenDetail() {
           transition={{ delay: 0.1, duration: 0.4 }}
           className="px-2"
         >
-          <PriceChart data={chartData} height={180} positive={positive} />
+          <PriceChart data={chartData} height={180} positive={positive} isLoading={chartLoading} />
           <TimeframeSelector value={timeframe} onChange={setTimeframe} />
         </motion.div>
 

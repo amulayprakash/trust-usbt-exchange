@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Settings, ChevronDown, Copy, Check, LogOut } from 'lucide-react'
+import { ChevronDown, Copy, Check, LogOut } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import useWalletStore from '@/store/useWalletStore'
@@ -43,10 +43,6 @@ export default function TopBar() {
       transition={{ duration: 0.25, ease: [0.25, 0.46, 0.45, 0.94] }}
       className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100 relative"
     >
-      <IconBtn className="hover:bg-gray-100 text-gray-600">
-        <Settings size={20} />
-      </IconBtn>
-
       <motion.button
         whileTap={{ scale: 0.95 }}
         transition={{ type: 'spring', stiffness: 400, damping: 22 }}

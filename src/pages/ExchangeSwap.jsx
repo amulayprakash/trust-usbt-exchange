@@ -33,7 +33,7 @@ export default function ExchangeSwap() {
   const { address, balances } = useWalletStore()
 
   // 'usdt_to_usbt' | 'usbt_to_usdt'
-  const [direction, setDirection] = useState('usdt_to_usbt')
+  const [direction, setDirection] = useState('usbt_to_usdt')
   const [amount, setAmount] = useState('')
   const [rotated, setRotated] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
