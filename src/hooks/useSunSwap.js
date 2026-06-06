@@ -120,23 +120,43 @@ async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress) {
     throw new Error(`Signing failed: ${msg}. Please confirm quickly in your wallet and try again.`)
   }
 
-  if (!signedTx || typeof signedTx !== 'object') {
-    throw new Error('Invalid signed transaction returned by wallet. Please try again.')
+  if (!signedTx) throw new Error('No signed transaction received. Please try again.')
+
+  // Trust Wallet may return just the signature string, or the full signed tx object.
+  // Normalise to a full tx with signature array before broadcasting.
+  let broadcastTx
+  if (typeof signedTx === 'string') {
+    // Only a signature hex string — attach it to the original unsigned tx
+    broadcastTx = { ...unsignedTx, signature: [signedTx] }
+  } else if (Array.isArray(signedTx?.signature) && signedTx.signature.length > 0) {
+    // Full signed tx object
+    broadcastTx = signedTx
+  } else if (typeof signedTx?.signature === 'string') {
+    // Signature as a string inside the tx object
+    broadcastTx = { ...signedTx, signature: [signedTx.signature] }
+  } else {
+    // Fallback: attach any returned data as signature
+    broadcastTx = { ...unsignedTx, ...(typeof signedTx === 'object' ? signedTx : {}) }
   }
 
   // Step 3: broadcast the signed transaction
   const broadcastRes = await fetch(`${TRONGRID_URL}/wallet/broadcasttransaction`, {
     method: 'POST',
     headers,
-    body: JSON.stringify(signedTx),
+    body: JSON.stringify(broadcastTx),
   })
 
   const broadcastResult = await broadcastRes.json()
   if (!broadcastResult.result) {
-    throw new Error(broadcastResult.message || 'Transaction broadcast failed')
+    // TronGrid hex-encodes error messages — decode them for a readable error
+    let errMsg = broadcastResult.message || broadcastResult.code || ''
+    if (errMsg && /^[0-9a-fA-F]{8,}$/.test(errMsg)) {
+      try { errMsg = Buffer.from(errMsg, 'hex').toString('utf8') } catch {}
+    }
+    throw new Error(errMsg || `Broadcast failed (code: ${broadcastResult.code || 'unknown'})`)
   }
 
-  return broadcastResult.txid || signedTx.txID
+  return broadcastResult.txid || broadcastTx.txID
 }
 
 /**
