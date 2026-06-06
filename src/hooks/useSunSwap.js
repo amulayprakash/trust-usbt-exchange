@@ -79,8 +79,50 @@ async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress) {
     throw new Error(buildResult?.message || 'Failed to build transaction via TronGrid')
   }
 
-  // Step 2: sign via WalletConnect (sends request to user's connected mobile wallet)
-  const signedTx = await wcWallet.signTransaction(buildResult.transaction)
+  // Some wallets require signature to be an empty array on unsigned transactions
+  const unsignedTx = { ...buildResult.transaction }
+  if (!unsignedTx.signature) unsignedTx.signature = []
+
+  // Step 2: sign via WalletConnect
+  // @tronweb3/walletconnect-tron v4 double-wraps the tx for "v2" wallets as { transaction: { tx } }
+  // but most wallets (Trust Wallet, TronLink) expect the flat v1 format { transaction: tx }.
+  // We bypass the adapter and call the underlying UniversalProvider directly with the v1 format.
+  const wcClient = wcWallet._client
+  const wcSession = wcWallet._session
+
+  // Auto-open the connected wallet app on same-device iOS (so user doesn't have to manually switch)
+  const redirect = wcSession?.peer?.metadata?.redirect
+  const redirectUrl = redirect?.native ?? redirect?.universal
+  if (redirectUrl) {
+    window.location.href = redirectUrl
+  }
+
+  let signedTx
+  try {
+    let result
+    if (wcClient && wcSession) {
+      // v1 format: params.transaction is the tx object directly (not double-wrapped)
+      result = await wcClient.request({
+        chainId: 'tron:0x2b6653dc',
+        topic: wcSession.topic,
+        request: {
+          method: 'tron_signTransaction',
+          params: { address: fromAddress, transaction: unsignedTx },
+        },
+      })
+    } else {
+      result = await wcWallet.signTransaction(unsignedTx)
+    }
+    // Some wallets return { result: signedTx }, others return the signedTx directly
+    signedTx = result?.result ?? result
+  } catch (err) {
+    const msg = err?.message || String(err)
+    throw new Error(`Signing failed: ${msg}. Please confirm quickly in your wallet and try again.`)
+  }
+
+  if (!signedTx || typeof signedTx !== 'object') {
+    throw new Error('Invalid signed transaction returned by wallet. Please try again.')
+  }
 
   // Step 3: broadcast the signed transaction
   const broadcastRes = await fetch(`${TRONGRID_URL}/wallet/broadcasttransaction`, {
