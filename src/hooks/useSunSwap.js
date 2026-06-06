@@ -59,7 +59,11 @@ async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress) {
 
   const headers = tronGridHeaders()
 
-  // Extract the definitive address from the WC session namespace — the most authoritative source.
+  // Declare wcSession/wcClient first — used below for ownerAddress extraction and signing
+  const wcClient = wcWallet._client
+  const wcSession = wcWallet._session
+
+  // Extract the definitive address from the WC session namespace — most authoritative source.
   // wcWallet.address and the Zustand store may both be stale or undefined.
   const sessionAccount = wcSession?.namespaces?.tron?.accounts?.[0] || ''
   const sessionAddress = sessionAccount.includes(':') ? sessionAccount.split(':')[2] : sessionAccount
@@ -93,13 +97,6 @@ async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress) {
   // @tronweb3/walletconnect-tron v4 double-wraps the tx for "v2" wallets as { transaction: { tx } }
   // but most wallets (Trust Wallet, TronLink) expect the flat v1 format { transaction: tx }.
   // We bypass the adapter and call the underlying UniversalProvider directly with the v1 format.
-  const wcClient = wcWallet._client
-  const wcSession = wcWallet._session
-
-  // If the resolved address differs from the store, sync the store to prevent future mismatches
-  if (ownerAddress && ownerAddress !== fromAddress) {
-    useWalletStore.getState().setWallet?.(ownerAddress, 'walletconnect')
-  }
 
   // Auto-open the connected wallet app on same-device iOS (so user doesn't have to manually switch)
   const redirect = wcSession?.peer?.metadata?.redirect
