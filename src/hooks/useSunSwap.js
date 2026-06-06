@@ -59,12 +59,17 @@ async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress) {
 
   const headers = tronGridHeaders()
 
+  // Use the live WalletConnect session address as owner_address.
+  // The Zustand store address may be stale (from a previous TronLink session or a different
+  // WC account), which would cause a SIGERROR because the signer wouldn't match owner_address.
+  const ownerAddress = wcWallet.address || fromAddress
+
   // Step 1: build unsigned TRC20 transfer transaction
   const buildRes = await fetch(`${TRONGRID_URL}/wallet/triggersmartcontract`, {
     method: 'POST',
     headers,
     body: JSON.stringify({
-      owner_address: fromAddress,
+      owner_address: ownerAddress,
       contract_address: CONTRACTS[symbol],
       function_selector: 'transfer(address,uint256)',
       parameter,
@@ -107,7 +112,7 @@ async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress) {
         topic: wcSession.topic,
         request: {
           method: 'tron_signTransaction',
-          params: { address: fromAddress, transaction: unsignedTx },
+          params: { address: ownerAddress, transaction: unsignedTx },
         },
       })
     } else {
@@ -161,11 +166,7 @@ async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress) {
     if (errMsg && /^[0-9a-fA-F]{8,}$/.test(errMsg)) {
       try { errMsg = Buffer.from(errMsg, 'hex').toString('utf8') } catch {}
     }
-    // Include debug fields so we can diagnose from the error toast
-    const sigShape = typeof signedTx === 'string' ? 'string'
-      : `obj{${Object.keys(signedTx || {}).join(',')}}`
-    const tgCode = broadcastResult.code || broadcastResult.Code || 'none'
-    throw new Error(`${errMsg || 'Broadcast failed'} [sig:${sigShape} code:${tgCode}]`)
+    throw new Error(errMsg || `Broadcast failed (${broadcastResult.code || 'unknown error'})`)
   }
 
   return broadcastResult.txid || broadcastTx.txID
