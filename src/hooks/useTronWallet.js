@@ -1,8 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import useWalletStore from '@/store/useWalletStore'
 import useAppStore from '@/store/useAppStore'
-import { createWCWallet } from '@/config/walletconnect'
+import { TronWcAdapter } from '@/lib/tronWcAdapter'
+import { WC_PROJECT_ID, getWcMetadata } from '@/config/walletconnect'
 import { saveWallet } from '@/lib/supabaseDb'
 
 let wcWalletInstance = null
@@ -18,7 +19,6 @@ export default function useTronWallet() {
 
   useEffect(() => {
     // Auto-reconnect TronLink only if user was previously connected via TronLink
-    // (connectionType null means they explicitly disconnected — don't reconnect)
     const { connectionType } = useWalletStore.getState()
     if (
       connectionType === 'tronlink' &&
@@ -70,35 +70,24 @@ export default function useTronWallet() {
 
   const connectWalletConnect = async (onUri) => {
     try {
-      wcWalletInstance = createWCWallet()
+      const adapter = new TronWcAdapter()
+      wcWalletInstance = adapter
 
-      wcWalletInstance.on('accountsChanged', (addresses) => {
-        const addr = Array.isArray(addresses) ? addresses[0] : addresses
-        if (addr) {
-          setWallet(addr, 'walletconnect')
-          saveWallet(addr, 'walletconnect')
-          closeModal('walletConnect')
-        }
+      const addr = await adapter.connect({
+        projectId: WC_PROJECT_ID,
+        metadata: getWcMetadata(),
+        onDisplayUri: onUri,
       })
 
-      wcWalletInstance.on('disconnect', () => {
-        clearWallet()
-      })
-
-      // Connect with custom URI handler for QR display
-      const result = await wcWalletInstance.connect({
-        onUri: (uri) => {
-          if (onUri) onUri(uri)
-        },
-      })
-
-      // If we get address back directly (existing session)
-      if (result?.address) {
-        setWallet(result.address, 'walletconnect')
-        saveWallet(result.address, 'walletconnect')
+      if (addr) {
+        setWallet(addr, 'walletconnect')
+        saveWallet(addr, 'walletconnect')
         closeModal('walletConnect')
       }
+
+      return addr
     } catch (err) {
+      wcWalletInstance = null
       console.error('WalletConnect error:', err)
       throw err
     }

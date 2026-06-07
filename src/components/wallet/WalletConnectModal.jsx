@@ -1,6 +1,8 @@
 import { QRCodeSVG } from 'qrcode.react'
-import { X, Copy, RefreshCw } from 'lucide-react'
+import { X, Copy, RefreshCw, ExternalLink } from 'lucide-react'
 import { cn } from '@/lib/utils'
+
+const isMobile = typeof navigator !== 'undefined' && /iPhone|iPad|Android/i.test(navigator.userAgent)
 
 export default function WalletConnectModal({ uri, onClose, onRefresh }) {
   const copyUri = () => {
@@ -14,7 +16,7 @@ export default function WalletConnectModal({ uri, onClose, onRefresh }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-bold text-gray-900">Scan with Wallet</h2>
+          <h2 className="text-lg font-bold text-gray-900">Connect Wallet</h2>
           <button onClick={onClose} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
             <X size={16} />
           </button>
@@ -32,22 +34,34 @@ export default function WalletConnectModal({ uri, onClose, onRefresh }) {
           )}
 
           <p className="text-sm text-gray-500 text-center">
-            Open Trust Wallet or any WalletConnect-compatible wallet and scan this QR code
+            {isMobile
+              ? 'Tap Open in Wallet to connect via Trust Wallet or any WalletConnect app'
+              : 'Scan this QR code with Trust Wallet or any WalletConnect-compatible wallet'}
           </p>
 
           <div className="flex gap-3 w-full">
-            <button
-              onClick={copyUri}
-              disabled={!uri}
-              className={cn(
-                'flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border border-gray-200',
-                'text-sm font-medium text-gray-700 hover:bg-gray-50',
-                !uri && 'opacity-50 pointer-events-none'
-              )}
-            >
-              <Copy size={16} />
-              Copy Link
-            </button>
+            {isMobile && uri ? (
+              <a
+                href={uri}
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-[#0500FF] text-white text-sm font-medium"
+              >
+                <ExternalLink size={16} />
+                Open in Wallet
+              </a>
+            ) : (
+              <button
+                onClick={copyUri}
+                disabled={!uri}
+                className={cn(
+                  'flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border border-gray-200',
+                  'text-sm font-medium text-gray-700 hover:bg-gray-50',
+                  !uri && 'opacity-50 pointer-events-none'
+                )}
+              >
+                <Copy size={16} />
+                Copy Link
+              </button>
+            )}
             {onRefresh && (
               <button
                 onClick={onRefresh}

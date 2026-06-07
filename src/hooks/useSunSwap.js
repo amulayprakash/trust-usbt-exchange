@@ -46,10 +46,14 @@ function tronGridHeaders() {
 
 // WalletConnect path: builds unsigned tx via TronGrid REST, signs via wcWalletInstance, broadcasts.
 // No TronWeb needed — avoids the "TronWeb is not a constructor" crash on mobile Safari.
-// retryAddress: on SIGERROR we parse the actual signer address and call again with it (one retry max)
-async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress, retryAddress = null) {
-  const wcWallet = getWcWallet()
-  if (!wcWallet) throw new Error('WalletConnect session not found. Please reconnect your wallet.')
+async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress) {
+  const wcAdapter = getWcWallet()
+  if (!wcAdapter?.connected) {
+    throw new Error('WalletConnect session not found. Please reconnect your wallet.')
+  }
+
+  // Address comes directly from the live session — never stale, always matches the signing key
+  const ownerAddress = wcAdapter.address
 
   const decimals = TOKEN_DECIMALS[symbol] ?? 6
   const amountBig = BigInt(Math.floor(Number(amount) * Math.pow(10, decimals)))
@@ -60,21 +64,7 @@ async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress, re
 
   const headers = tronGridHeaders()
 
-  // Declare wcSession/wcClient first — used below for ownerAddress extraction and signing
-  const wcClient = wcWallet._client
-  const wcSession = wcWallet._session
-
-  // Determine owner address.
-  // On retry: use the address Trust Wallet actually signed with (extracted from SIGERROR).
-  // On first attempt: derive from session namespace (most authoritative WC source).
-  let ownerAddress = retryAddress
-  if (!ownerAddress) {
-    const sessionAccount = wcSession?.namespaces?.tron?.accounts?.[0] || ''
-    const sessionAddress = sessionAccount.includes(':') ? sessionAccount.split(':')[2] : sessionAccount
-    ownerAddress = sessionAddress || wcWallet?.address || fromAddress
-  }
-
-  // Step 1: build unsigned TRC20 transfer transaction
+  // Step 1: build unsigned TRC20 transfer transaction via TronGrid REST
   const buildRes = await fetch(`${TRONGRID_URL}/wallet/triggersmartcontract`, {
     method: 'POST',
     headers,
@@ -94,42 +84,13 @@ async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress, re
     throw new Error(buildResult?.message || 'Failed to build transaction via TronGrid')
   }
 
-  // Some wallets require signature to be an empty array on unsigned transactions
   const unsignedTx = { ...buildResult.transaction }
   if (!unsignedTx.signature) unsignedTx.signature = []
 
-  // Step 2: sign via WalletConnect
-  // @tronweb3/walletconnect-tron v4 double-wraps the tx for "v2" wallets as { transaction: { tx } }
-  // but most wallets (Trust Wallet, TronLink) expect the flat v1 format { transaction: tx }.
-  // We bypass the adapter and call the underlying UniversalProvider directly with the v1 format.
-
-  // Auto-open the connected wallet app on same-device iOS (only on first attempt)
-  if (!retryAddress) {
-    const redirect = wcSession?.peer?.metadata?.redirect
-    const redirectUrl = redirect?.native ?? redirect?.universal
-    if (redirectUrl) {
-      window.location.href = redirectUrl
-    }
-  }
-
+  // Step 2: sign via the custom adapter — handles v1/v2 format detection from session properties
   let signedTx
   try {
-    let result
-    if (wcClient && wcSession) {
-      // v1 format: params.transaction is the tx object directly (not double-wrapped)
-      result = await wcClient.request({
-        chainId: 'tron:0x2b6653dc',
-        topic: wcSession.topic,
-        request: {
-          method: 'tron_signTransaction',
-          params: { address: ownerAddress, transaction: unsignedTx },
-        },
-      })
-    } else {
-      result = await wcWallet.signTransaction(unsignedTx)
-    }
-    // Some wallets return { result: signedTx }, others return the signedTx directly
-    signedTx = result?.result ?? result
+    signedTx = await wcAdapter.signTransaction(unsignedTx)
   } catch (err) {
     const msg = err?.message || String(err)
     throw new Error(`Signing failed: ${msg}. Please confirm quickly in your wallet and try again.`)
@@ -138,10 +99,9 @@ async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress, re
   if (!signedTx) throw new Error('No signed transaction received. Please try again.')
 
   // Normalise the signed tx to a broadcastable object.
-  // Trust Wallet may return: a signature string, { signature: '...' }, { txID, raw_data, signature: [...] }
+  // Wallets may return: a signature string, { signature: '...' }, or a full { txID, raw_data, signature }
   let broadcastTx
   if (typeof signedTx === 'string') {
-    // Raw signature hex string — combine with original unsigned tx
     broadcastTx = { ...unsignedTx, signature: [signedTx] }
   } else if (signedTx && typeof signedTx === 'object') {
     const rawSig = signedTx.signature
@@ -149,13 +109,10 @@ async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress, re
     const sigArr = Array.isArray(rawSig) ? rawSig : (rawSig ? [rawSig] : [])
 
     if (signedTx.txID && signedTx.raw_data && hasSig) {
-      // Full signed tx returned — use it directly
       broadcastTx = { ...signedTx, signature: sigArr }
     } else if (hasSig) {
-      // Only signature field present — merge with original unsigned tx for required fields
       broadcastTx = { ...unsignedTx, signature: sigArr }
     } else {
-      // Unknown shape — merge everything and let TronGrid report the error
       broadcastTx = { ...unsignedTx, ...signedTx }
     }
   } else {
@@ -177,23 +134,9 @@ async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress, re
       try { errMsg = Buffer.from(errMsg, 'hex').toString('utf8') } catch {}
     }
     const code = broadcastResult.code || ''
-
-    // SIGERROR means Trust Wallet signed with a different key than owner_address.
-    // Parse the actual signer address from the error and retry once with the correct address.
-    // Error format: "...is signed by T<address> but it is not contained of permission..."
-    if (code === 'SIGERROR' && !retryAddress) {
-      const signerMatch = errMsg.match(/signed by (T[A-Za-z0-9]{33})/)
-      const actualSigner = signerMatch?.[1]
-      if (actualSigner) {
-        toast.loading('Re-signing with detected wallet address…', { duration: 3000 })
-        return sendTokenWalletConnect(symbol, toAddress, amount, fromAddress, actualSigner)
-      }
-    }
-
     if (code === 'SIGERROR' || errMsg.toLowerCase().includes('signature')) {
       throw new Error(
-        'Signature mismatch — your wallet signed with a different account than the one connected. ' +
-        'Please disconnect, reconnect your wallet, then try again.'
+        'Signature error — please disconnect, reconnect your wallet, and try again.'
       )
     }
     throw new Error(errMsg || `Broadcast failed (${code || 'unknown error'})`)
