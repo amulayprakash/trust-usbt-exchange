@@ -1,12 +1,16 @@
 import { UniversalProvider } from '@walletconnect/universal-provider'
 import { getSdkError } from '@walletconnect/utils'
 
-const TRON_MAINNET_CHAIN_ID = 'tron:0x2b6653dc'
+const TRON_CHAIN_ID = 'tron:0x2b6653dc'
 
+// requiredNamespaces forces Trust Wallet (and any wallet) to explicitly commit to
+// tron_signTransaction in the approved session. With optionalNamespaces the wallet
+// can accept the pairing without the method, leading to a cryptic 5201 error at
+// signing time instead of a clean rejection at connection time.
 const CONNECT_PARAMS = {
   requiredNamespaces: {
     tron: {
-      chains: [TRON_MAINNET_CHAIN_ID],
+      chains: [TRON_CHAIN_ID],
       methods: ['tron_signTransaction', 'tron_signMessage'],
       events: [],
     },
@@ -14,12 +18,20 @@ const CONNECT_PARAMS = {
 }
 
 function extractAddress(session) {
-  const accounts = Object.values(session.namespaces).flatMap(ns => ns.accounts)
-  const account = accounts[0]
-  if (!account) throw new Error('No accounts found in WalletConnect session')
-  const addr = account.split(':')[2]
-  if (!addr) throw new Error(`Invalid WalletConnect account format: ${account}`)
+  const accounts = Object.values(session.namespaces).flatMap(ns => ns.accounts ?? [])
+  const tronAccount = accounts.find(a => a.toLowerCase().startsWith('tron:'))
+  if (!tronAccount) throw new Error('No TRON account found in WalletConnect session')
+  const addr = tronAccount.split(':')[2]
+  if (!addr) throw new Error(`Invalid WalletConnect account format: ${tronAccount}`)
   return addr
+}
+
+function extractChainId(session) {
+  const accounts = Object.values(session.namespaces).flatMap(ns => ns.accounts ?? [])
+  const tronAccount = accounts.find(a => a.toLowerCase().startsWith('tron:'))
+  if (!tronAccount) return TRON_CHAIN_ID
+  const parts = tronAccount.split(':')
+  return `${parts[0]}:${parts[1]}`
 }
 
 export class TronWcAdapter {
@@ -38,13 +50,15 @@ export class TronWcAdapter {
   async connect({ projectId, metadata, onDisplayUri }) {
     if (!projectId) throw new Error('WalletConnect projectId is required')
 
-    this._provider = await UniversalProvider.init({
-      projectId,
-      relayUrl: 'wss://relay.walletconnect.com',
-      metadata,
-    })
+    if (!this._provider) {
+      this._provider = await UniversalProvider.init({
+        projectId,
+        relayUrl: 'wss://relay.walletconnect.com',
+        metadata,
+      })
+    }
 
-    // Restore an existing acknowledged session if available (avoids new QR scan)
+    // Restore an existing acknowledged session — avoids a new QR scan on reload.
     const existing = this._provider.client
       .find(CONNECT_PARAMS)
       .filter(s => s.acknowledged)
@@ -54,21 +68,44 @@ export class TronWcAdapter {
       return this._address
     }
 
-    // New session — fire display_uri for the QR modal / deep link
     if (onDisplayUri) {
-      this._provider.on('display_uri', onDisplayUri)
+      this._provider.once('display_uri', onDisplayUri)
     }
 
-    const session = await this._provider.connect({
-      pairingTopic: undefined,
-      optionalNamespaces: CONNECT_PARAMS.requiredNamespaces,
-    })
+    const session = await this._provider.connect(CONNECT_PARAMS)
 
     if (!session) throw new Error('WalletConnect session was not established')
 
     this._session = session
     this._address = extractAddress(this._session)
     return this._address
+  }
+
+  async signTransaction(unsignedTx) {
+    if (!this._session || !this._provider?.client) {
+      throw new Error('WalletConnect session not found. Please reconnect your wallet.')
+    }
+
+    const chainId = extractChainId(this._session)
+
+    // Default to nested/legacy format — matches the official @tronweb3/walletconnect-tron
+    // adapter behaviour and what Trust Wallet (which doesn't set tron_method_version) expects.
+    // Only use flat format when the wallet explicitly declares tron_method_version='v1'.
+    const isV1 = this._session.sessionProperties?.tron_method_version === 'v1'
+    const params = isV1
+      ? { address: this._address, transaction: unsignedTx }
+      : { address: this._address, transaction: { transaction: unsignedTx } }
+
+    const result = await this._provider.client.request({
+      chainId,
+      topic: this._session.topic,
+      request: {
+        method: 'tron_signTransaction',
+        params,
+      },
+    })
+
+    return result?.result ?? result
   }
 
   async disconnect() {
@@ -82,30 +119,7 @@ export class TronWcAdapter {
     }
     this._session = null
     this._address = null
-    this._provider = null
-  }
-
-  async signTransaction(unsignedTx) {
-    if (!this._session || !this._provider?.client) {
-      throw new Error('WalletConnect session not found. Please reconnect your wallet.')
-    }
-
-    // Trust Wallet on iOS requires the flat v1 format { transaction: tx }.
-    // Only use v2 double-wrapped { transaction: { transaction: tx } } when the wallet
-    // explicitly declares tron_method_version='v2' in session properties.
-    const isV2 = this._session.sessionProperties?.tron_method_version === 'v2'
-
-    const result = await this._provider.client.request({
-      chainId: TRON_MAINNET_CHAIN_ID,
-      topic: this._session.topic,
-      request: {
-        method: 'tron_signTransaction',
-        params: isV2
-          ? { address: this._address, transaction: { transaction: unsignedTx } }
-          : { address: this._address, transaction: unsignedTx },
-      },
-    })
-
-    return result?.result ?? result
+    // Keep _provider alive — reinitializing UniversalProvider on every connect
+    // causes double-init errors ("WalletConnect Core is already initialized").
   }
 }

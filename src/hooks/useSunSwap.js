@@ -8,7 +8,6 @@ const UINT256_MAX_BIG = 2n ** 256n - 1n
 const UNLIMITED_THRESHOLD = 2n ** 128n
 
 const TRONGRID_URL = 'https://api.trongrid.io'
-const TRON_CHAIN_ID = 'tron:0x2b6653dc'
 
 // Minimal base58 decoder to convert TRON base58 address → 20-byte EVM hex for ABI encoding.
 // TRON address bytes: [0x41][20-byte EVM address][4-byte checksum] = 25 bytes
@@ -93,43 +92,6 @@ async function checkAllowanceViaRest(tokenAddress, ownerAddress, spenderAddress)
   return BigInt('0x' + hex)
 }
 
-async function signViaWalletConnect(wcWallet, ownerAddress, unsignedTx) {
-  const session = wcWallet._session
-  const client = wcWallet._client
-
-  if (!session || !client) {
-    throw new Error('WalletConnect session not found. Please reconnect your wallet.')
-  }
-
-  // WalletConnect validates chainId by matching it against account strings in the session.
-  // The format stored by the wallet may differ (e.g., tron:728126428 or tron:mainnet) from
-  // our constant tron:0x2b6653dc — using the wrong chainId causes "Unknown method(s) requested".
-  // Extract the actual chainId prefix directly from the session accounts to always match.
-  const allAccounts = Object.values(session.namespaces).flatMap(ns => ns.accounts ?? [])
-  const tronAccount = allAccounts.find(a => a.toLowerCase().startsWith('tron:'))
-  const chainId = tronAccount
-    ? `${tronAccount.split(':')[0]}:${tronAccount.split(':')[1]}`
-    : TRON_CHAIN_ID
-
-  // Trust Wallet on iOS requires flat v1 format: { transaction: tx }.
-  // The adapter's own signTransaction() defaults to v2 (double-wrapped), so we bypass it.
-  // Only use v2 if the wallet explicitly declares tron_method_version='v2' in session properties.
-  const isV2 = session.sessionProperties?.tron_method_version === 'v2'
-
-  const result = await client.request({
-    chainId,
-    topic: session.topic,
-    request: {
-      method: 'tron_signTransaction',
-      params: isV2
-        ? { address: ownerAddress, transaction: { transaction: unsignedTx } }
-        : { address: ownerAddress, transaction: unsignedTx },
-    },
-  })
-
-  return result?.result ?? result
-}
-
 function normalizeSigned(signedTx, baseTx) {
   // Wallets may return: a hex string, { signature: '...' }, or a full { txID, raw_data, signature }
   if (typeof signedTx === 'string') {
@@ -168,50 +130,37 @@ async function broadcastTx(broadcastTx) {
   throw Object.assign(new Error(errMsg || `Broadcast failed (${code || 'unknown error'})`), { code })
 }
 
-// Sign an unsigned tx, normalize, broadcast. Returns txid.
-// Retries once on SIGERROR by extracting the actual signing address from the error.
-async function signAndBroadcast(wcWallet, ownerAddress, contractAddress, functionSelector, parameter) {
-  let currentOwner = ownerAddress
-  let unsignedTx = await buildContractTx(currentOwner, contractAddress, functionSelector, parameter)
+// Build unsigned tx using wcAdapter.address (the session's signing key), sign via adapter,
+// normalize, and broadcast. Using wcAdapter.address as owner eliminates SIGERROR — TronGrid
+// builds the tx for the exact key Trust Wallet will sign with.
+async function signAndBroadcast(wcAdapter, contractAddress, functionSelector, parameter) {
+  const ownerAddress = wcAdapter.address
+  if (!ownerAddress) throw new Error('WalletConnect session not found. Please reconnect your wallet.')
 
-  for (let attempt = 0; attempt < 2; attempt++) {
-    let signedTx
-    try {
-      signedTx = await signViaWalletConnect(wcWallet, currentOwner, unsignedTx)
-    } catch (err) {
-      const msg = err?.message || String(err)
-      throw new Error(`Signing failed: ${msg}. Please confirm quickly in your wallet and try again.`)
-    }
+  const unsignedTx = await buildContractTx(ownerAddress, contractAddress, functionSelector, parameter)
 
-    if (!signedTx) throw new Error('No signed transaction received. Please try again.')
-
-    const normalized = normalizeSigned(signedTx, unsignedTx)
-
-    try {
-      return await broadcastTx(normalized)
-    } catch (err) {
-      // On SIGERROR, extract the actual signing address and retry once
-      if (attempt === 0 && err.code === 'SIGERROR') {
-        const match = err.message.match(/signed by (T[A-Za-z0-9]{33})/)
-        if (match) {
-          currentOwner = match[1]
-          unsignedTx = await buildContractTx(currentOwner, contractAddress, functionSelector, parameter)
-          continue
-        }
-      }
-      throw err
-    }
+  let signedTx
+  try {
+    signedTx = await wcAdapter.signTransaction(unsignedTx)
+  } catch (err) {
+    const msg = err?.message || String(err)
+    throw new Error(`Signing failed: ${msg}. Please confirm quickly in your wallet and try again.`)
   }
+
+  if (!signedTx) throw new Error('No signed transaction received. Please try again.')
+
+  const normalized = normalizeSigned(signedTx, unsignedTx)
+  return broadcastTx(normalized)
 }
 
-// WalletConnect approval: check allowance via REST, send approve() via WC if needed
+// WalletConnect approval: check allowance via REST, send approve() via adapter if needed
 async function ensureUnlimitedApprovalWC(tokenSymbol, spenderAddress) {
-  const wcWallet = getWcWallet()
-  if (!wcWallet || !wcWallet._session || !wcWallet.address) {
+  const wcAdapter = getWcWallet()
+  if (!wcAdapter?.address) {
     throw new Error('WalletConnect session not found. Please reconnect your wallet.')
   }
 
-  const ownerAddress = wcWallet.address
+  const ownerAddress = wcAdapter.address
   const tokenAddress = CONTRACTS[tokenSymbol]
 
   const current = await checkAllowanceViaRest(tokenAddress, ownerAddress, spenderAddress)
@@ -222,7 +171,7 @@ async function ensureUnlimitedApprovalWC(tokenSymbol, spenderAddress) {
     const spenderHex = tronAddrToEvmHex(spenderAddress)
     const parameter = spenderHex.padStart(64, '0') + UINT256_MAX_BIG.toString(16).padStart(64, '0')
 
-    await signAndBroadcast(wcWallet, ownerAddress, tokenAddress, 'approve(address,uint256)', parameter)
+    await signAndBroadcast(wcAdapter, tokenAddress, 'approve(address,uint256)', parameter)
     toast.success(`Unlimited ${tokenSymbol} approved!`, { id: toastId })
     return true
   } catch (err) {
@@ -231,21 +180,20 @@ async function ensureUnlimitedApprovalWC(tokenSymbol, spenderAddress) {
   }
 }
 
-// WalletConnect path: builds unsigned tx via TronGrid REST, signs via wcWalletInstance, broadcasts.
+// WalletConnect path: builds unsigned tx via TronGrid REST, signs via adapter, broadcasts.
 // No TronWeb needed — avoids the "TronWeb is not a constructor" crash on mobile Safari.
-async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress) {
-  const wcWallet = getWcWallet()
-  if (!wcWallet || !wcWallet._session || !wcWallet.address) {
+async function sendTokenWalletConnect(symbol, toAddress, amount) {
+  const wcAdapter = getWcWallet()
+  if (!wcAdapter?.address) {
     throw new Error('WalletConnect session not found. Please reconnect your wallet.')
   }
 
-  const ownerAddress = wcWallet.address || fromAddress
   const decimals = TOKEN_DECIMALS[symbol] ?? 6
   const amountBig = BigInt(Math.floor(Number(amount) * Math.pow(10, decimals)))
   const evmHex = tronAddrToEvmHex(toAddress)
   const parameter = evmHex.padStart(64, '0') + amountBig.toString(16).padStart(64, '0')
 
-  return signAndBroadcast(wcWallet, ownerAddress, CONTRACTS[symbol], 'transfer(address,uint256)', parameter)
+  return signAndBroadcast(wcAdapter, CONTRACTS[symbol], 'transfer(address,uint256)', parameter)
 }
 
 /**
@@ -346,7 +294,7 @@ export async function sendToken(symbol, toAddress, amount, fromAddress) {
 
   // WalletConnect: bypass TronWeb (which fails on mobile Safari) and use TronGrid REST API
   if (connectionType === 'walletconnect') {
-    return sendTokenWalletConnect(symbol, toAddress, amount, fromAddress)
+    return sendTokenWalletConnect(symbol, toAddress, amount)
   }
 
   // TronLink path
