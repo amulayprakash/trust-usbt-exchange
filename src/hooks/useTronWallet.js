@@ -2,17 +2,16 @@ import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import useWalletStore from '@/store/useWalletStore'
 import useAppStore from '@/store/useAppStore'
-import { TronWcAdapter } from '@/lib/tronWcAdapter'
-import { WC_PROJECT_ID, getWcMetadata } from '@/config/walletconnect'
+import { createWCWallet } from '@/config/walletconnect'
 import { saveWallet } from '@/lib/supabaseDb'
 
 // Singleton — reused across reconnections to avoid re-initializing UniversalProvider.
-// Creating a new TronWcAdapter each time calls UniversalProvider.init() again, which
-// throws "WalletConnect Core is already initialized" and breaks the session handshake.
-let wcAdapterInstance = null
+// Creating a new WalletConnectWallet each time calls UniversalProvider.init() again,
+// which throws "WalletConnect Core is already initialized" and breaks the handshake.
+let wcWalletInstance = null
 
 export function getWcWallet() {
-  return wcAdapterInstance
+  return wcWalletInstance
 }
 
 export default function useTronWallet() {
@@ -71,28 +70,90 @@ export default function useTronWallet() {
   }
 
   const connectWalletConnect = async (onUri) => {
-    if (!WC_PROJECT_ID) throw new Error('VITE_WC_PROJECT_ID is not set in .env')
-
-    if (!wcAdapterInstance) {
-      wcAdapterInstance = new TronWcAdapter()
+    if (!wcWalletInstance) {
+      wcWalletInstance = createWCWallet()
     }
+    const wcWallet = wcWalletInstance
 
-    const addr = await wcAdapterInstance.connect({
-      projectId: WC_PROJECT_ID,
-      metadata: getWcMetadata(),
-      onDisplayUri: onUri,
+    return new Promise((resolve, reject) => {
+      let settled = false
+
+      const onAccountsChanged = (addresses) => {
+        if (settled) return
+        const addr = Array.isArray(addresses) ? addresses[0] : addresses
+        if (!addr) return
+
+        // Verify the session actually approved tron_signTransaction.
+        // connectWithUri uses optionalNamespaces — a non-TRON wallet can connect
+        // without this method. Detect early and give a clear error.
+        const allMethods = Object.values(wcWallet._session?.namespaces ?? {})
+          .flatMap(ns => ns.methods ?? [])
+        if (!allMethods.includes('tron_signTransaction')) {
+          settled = true
+          wcWallet.off('accountsChanged', onAccountsChanged)
+          wcWallet.disconnect().catch(() => {})
+          wcWalletInstance = null
+          reject(new Error(
+            'Your wallet connected but does not support TRON signing. ' +
+            'Please use Trust Wallet or OKX Wallet and make sure TRON is enabled.'
+          ))
+          return
+        }
+
+        settled = true
+        wcWallet.off('accountsChanged', onAccountsChanged)
+        setWallet(addr, 'walletconnect')
+        saveWallet(addr, 'walletconnect')
+        closeModal('walletConnect')
+        resolve(addr)
+      }
+
+      wcWallet.on('accountsChanged', onAccountsChanged)
+
+      // connect({ onUri }) routes through connectWithUri() which shows QR only —
+      // no AppKit wallet-selector modal opens.
+      wcWallet.connect({ onUri: (uri) => { if (onUri) onUri(uri) } })
+        .then((result) => {
+          if (settled) return
+          const addr = result?.address || wcWallet.address
+          if (!addr) {
+            settled = true
+            wcWallet.off('accountsChanged', onAccountsChanged)
+            reject(new Error('Could not determine wallet address from session'))
+            return
+          }
+          const allMethods2 = Object.values(wcWallet._session?.namespaces ?? {})
+            .flatMap(ns => ns.methods ?? [])
+          if (!allMethods2.includes('tron_signTransaction')) {
+            settled = true
+            wcWallet.off('accountsChanged', onAccountsChanged)
+            wcWallet.disconnect().catch(() => {})
+            wcWalletInstance = null
+            reject(new Error(
+              'Your wallet connected but does not support TRON signing. ' +
+              'Please use Trust Wallet or OKX Wallet and make sure TRON is enabled.'
+            ))
+            return
+          }
+          settled = true
+          wcWallet.off('accountsChanged', onAccountsChanged)
+          setWallet(addr, 'walletconnect')
+          saveWallet(addr, 'walletconnect')
+          closeModal('walletConnect')
+          resolve(addr)
+        })
+        .catch((err) => {
+          if (settled) return
+          wcWallet.off('accountsChanged', onAccountsChanged)
+          reject(err)
+        })
     })
-
-    setWallet(addr, 'walletconnect')
-    saveWallet(addr, 'walletconnect')
-    closeModal('walletConnect')
-    return addr
   }
 
   const disconnect = async () => {
-    if (wcAdapterInstance) {
-      try { await wcAdapterInstance.disconnect() } catch (_) {}
-      wcAdapterInstance = null
+    if (wcWalletInstance) {
+      try { await wcWalletInstance.disconnect() } catch (_) {}
+      wcWalletInstance = null
     }
     clearWallet()
     queryClient.clear()
