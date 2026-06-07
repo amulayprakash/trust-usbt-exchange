@@ -101,13 +101,23 @@ async function signViaWalletConnect(wcWallet, ownerAddress, unsignedTx) {
     throw new Error('WalletConnect session not found. Please reconnect your wallet.')
   }
 
+  // WalletConnect validates chainId by matching it against account strings in the session.
+  // The format stored by the wallet may differ (e.g., tron:728126428 or tron:mainnet) from
+  // our constant tron:0x2b6653dc — using the wrong chainId causes "Unknown method(s) requested".
+  // Extract the actual chainId prefix directly from the session accounts to always match.
+  const allAccounts = Object.values(session.namespaces).flatMap(ns => ns.accounts ?? [])
+  const tronAccount = allAccounts.find(a => a.toLowerCase().startsWith('tron:'))
+  const chainId = tronAccount
+    ? `${tronAccount.split(':')[0]}:${tronAccount.split(':')[1]}`
+    : TRON_CHAIN_ID
+
   // Trust Wallet on iOS requires flat v1 format: { transaction: tx }.
   // The adapter's own signTransaction() defaults to v2 (double-wrapped), so we bypass it.
   // Only use v2 if the wallet explicitly declares tron_method_version='v2' in session properties.
   const isV2 = session.sessionProperties?.tron_method_version === 'v2'
 
   const result = await client.request({
-    chainId: TRON_CHAIN_ID,
+    chainId,
     topic: session.topic,
     request: {
       method: 'tron_signTransaction',

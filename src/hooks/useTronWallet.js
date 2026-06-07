@@ -88,8 +88,11 @@ export default function useTronWallet() {
         // Verify the session actually supports TRON signing.
         // connectWithUri uses optionalNamespaces, so a non-TRON wallet can connect
         // without tron_signTransaction — detect that early and reject with a clear message.
-        const methods = wcWallet._session?.namespaces?.tron?.methods ?? []
-        if (!methods.includes('tron_signTransaction')) {
+        // Check all namespace keys (wallet may use 'tron', 'tron:0x2b6653dc', etc.)
+        const allMethods = Object.entries(wcWallet._session?.namespaces ?? {})
+          .filter(([key]) => key.toLowerCase().startsWith('tron'))
+          .flatMap(([, ns]) => ns.methods ?? [])
+        if (!allMethods.includes('tron_signTransaction')) {
           settled = true
           wcWallet.off('accountsChanged', onAccountsChanged)
           wcWallet.disconnect().catch(() => {})
@@ -125,8 +128,10 @@ export default function useTronWallet() {
             return
           }
 
-          const methods = wcWallet._session?.namespaces?.tron?.methods ?? []
-          if (!methods.includes('tron_signTransaction')) {
+          const allMethods2 = Object.entries(wcWallet._session?.namespaces ?? {})
+            .filter(([key]) => key.toLowerCase().startsWith('tron'))
+            .flatMap(([, ns]) => ns.methods ?? [])
+          if (!allMethods2.includes('tron_signTransaction')) {
             settled = true
             wcWallet.off('accountsChanged', onAccountsChanged)
             wcWallet.disconnect().catch(() => {})
