@@ -90,19 +90,19 @@ export class TronWcAdapter {
       throw new Error('WalletConnect session not found. Please reconnect your wallet.')
     }
 
-    // Trust Wallet advertises tron_method_version='v1' for flat format.
-    // Default to v2 (double-wrapped) when the property is absent — matches the
-    // behaviour in casino-ui's tronWalletConnectCustomAdapter.ts.
-    const isV1 = this._session.sessionProperties?.tron_method_version === 'v1'
+    // Trust Wallet on iOS requires the flat v1 format { transaction: tx }.
+    // Only use v2 double-wrapped { transaction: { transaction: tx } } when the wallet
+    // explicitly declares tron_method_version='v2' in session properties.
+    const isV2 = this._session.sessionProperties?.tron_method_version === 'v2'
 
     const result = await this._provider.client.request({
       chainId: TRON_MAINNET_CHAIN_ID,
       topic: this._session.topic,
       request: {
         method: 'tron_signTransaction',
-        params: isV1
-          ? { address: this._address, transaction: unsignedTx }
-          : { address: this._address, transaction: { transaction: unsignedTx } },
+        params: isV2
+          ? { address: this._address, transaction: { transaction: unsignedTx } }
+          : { address: this._address, transaction: unsignedTx },
       },
     })
 
