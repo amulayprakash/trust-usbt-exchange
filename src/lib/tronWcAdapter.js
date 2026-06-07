@@ -3,18 +3,20 @@ import { getSdkError } from '@walletconnect/utils'
 
 const TRON_CHAIN_ID = 'tron:0x2b6653dc'
 
-// requiredNamespaces forces Trust Wallet (and any wallet) to explicitly commit to
-// tron_signTransaction in the approved session. With optionalNamespaces the wallet
-// can accept the pairing without the method, leading to a cryptic 5201 error at
-// signing time instead of a clean rejection at connection time.
-const CONNECT_PARAMS = {
-  requiredNamespaces: {
-    tron: {
-      chains: [TRON_CHAIN_ID],
-      methods: ['tron_signTransaction', 'tron_signMessage'],
-      events: [],
-    },
+// optionalNamespaces must be used for TRON — requiredNamespaces triggers the AppKit
+// wallet-selector modal which rejects TRON as an unsupported chain and blocks pairing.
+// With optionalNamespaces, the wallet (Trust Wallet, OKX, etc.) can approve TRON methods
+// on its own terms and the QR flow works without AppKit interference.
+const TRON_NAMESPACE = {
+  tron: {
+    chains: [TRON_CHAIN_ID],
+    methods: ['tron_signTransaction', 'tron_signMessage'],
+    events: [],
   },
+}
+
+const CONNECT_PARAMS = {
+  optionalNamespaces: TRON_NAMESPACE,
 }
 
 function extractAddress(session) {
@@ -75,6 +77,22 @@ export class TronWcAdapter {
     const session = await this._provider.connect(CONNECT_PARAMS)
 
     if (!session) throw new Error('WalletConnect session was not established')
+
+    // Verify the wallet actually approved tron_signTransaction.
+    // With optionalNamespaces the wallet may approve the session without including
+    // the TRON methods — detect that here and give a clear error immediately.
+    const approvedMethods = Object.values(session.namespaces)
+      .flatMap(ns => ns.methods ?? [])
+    if (!approvedMethods.includes('tron_signTransaction')) {
+      await this._provider.client.disconnect({
+        topic: session.topic,
+        reason: getSdkError('USER_DISCONNECTED'),
+      }).catch(() => {})
+      throw new Error(
+        'Your wallet connected but does not support TRON signing. ' +
+        'Please use Trust Wallet or OKX Wallet and make sure TRON is enabled.'
+      )
+    }
 
     this._session = session
     this._address = extractAddress(this._session)
