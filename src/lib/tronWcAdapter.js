@@ -106,24 +106,43 @@ export class TronWcAdapter {
 
     const chainId = extractChainId(this._session)
 
-    // Default to nested/legacy format — matches the official @tronweb3/walletconnect-tron
-    // adapter behaviour and what Trust Wallet (which doesn't set tron_method_version) expects.
-    // Only use flat format when the wallet explicitly declares tron_method_version='v1'.
-    const isV1 = this._session.sessionProperties?.tron_method_version === 'v1'
-    const params = isV1
-      ? { address: this._address, transaction: unsignedTx }
-      : { address: this._address, transaction: { transaction: unsignedTx } }
+    // Different wallets require different params formats for tron_signTransaction:
+    //   flat:   { address, transaction: tx }                — Trust Wallet, most mobile wallets
+    //   nested: { address, transaction: { transaction: tx } } — some wallets declare tron_method_version='v2'
+    // We try flat first (which Trust Wallet iOS/Android needs). If the wallet immediately
+    // rejects with a format-related error, we retry with nested — no second user prompt
+    // appears because the wallet rejected without showing a signing UI.
+    const isV2 = this._session.sessionProperties?.tron_method_version === 'v2'
 
-    const result = await this._provider.client.request({
+    const buildRequest = (nested) => ({
       chainId,
       topic: this._session.topic,
       request: {
         method: 'tron_signTransaction',
-        params,
+        params: nested
+          ? { address: this._address, transaction: { transaction: unsignedTx } }
+          : { address: this._address, transaction: unsignedTx },
       },
     })
 
-    return result?.result ?? result
+    if (isV2) {
+      const result = await this._provider.client.request(buildRequest(true))
+      return result?.result ?? result
+    }
+
+    // Try flat first; fall back to nested if the wallet rejects immediately
+    try {
+      const result = await this._provider.client.request(buildRequest(false))
+      return result?.result ?? result
+    } catch (err) {
+      const msg = String(err?.message ?? err)
+      // Only retry on format-related wallet rejections — not on user cancellations or timeouts
+      if (msg.includes('Failed to sign') || msg.includes('Unknown method') || msg.includes('5201')) {
+        const result = await this._provider.client.request(buildRequest(true))
+        return result?.result ?? result
+      }
+      throw err
+    }
   }
 
   async disconnect() {
