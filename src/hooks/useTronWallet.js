@@ -6,29 +6,12 @@ import { createWCWallet } from '@/config/walletconnect'
 import { saveWallet } from '@/lib/supabaseDb'
 
 // Singleton — reused across reconnections to avoid double WC Core initialization.
+// Creating a new WalletConnectWallet each time re-runs UniversalProvider.init(),
+// which breaks the session proposal/handshake ("No matching key" errors).
 let wcWalletInstance = null
 
 export function getWcWallet() {
   return wcWalletInstance
-}
-
-const TRON_CHAIN_ID = 'tron:0x2b6653dc'
-
-// Use requiredNamespaces so wallets MUST include tron_signTransaction in the session.
-// optionalNamespaces (what WalletConnectWallet.connectWithUri() uses internally) lets
-// Trust Wallet connect without TRON methods, causing "Unknown method(s) requested" on sign.
-const TRON_REQUIRED_NS = {
-  tron: {
-    chains: [TRON_CHAIN_ID],
-    methods: ['tron_signTransaction', 'tron_signMessage'],
-    events: [],
-  },
-}
-
-function extractAddrFromSession(session) {
-  return Object.values(session.namespaces)
-    .flatMap(ns => ns.accounts)[0]
-    ?.split(':')[2] ?? null
 }
 
 export default function useTronWallet() {
@@ -37,7 +20,6 @@ export default function useTronWallet() {
   const queryClient = useQueryClient()
 
   useEffect(() => {
-    // Auto-reconnect TronLink only if user was previously connected via TronLink
     const { connectionType } = useWalletStore.getState()
     if (
       connectionType === 'tronlink' &&
@@ -88,63 +70,86 @@ export default function useTronWallet() {
   }
 
   const connectWalletConnect = async (onUri) => {
+    // Reuse the existing instance — creating a new WalletConnectWallet each time
+    // re-runs UniversalProvider.init() and breaks the session handshake.
     if (!wcWalletInstance) {
       wcWalletInstance = createWCWallet()
     }
     const wcWallet = wcWalletInstance
 
-    // Get the UniversalProvider via the adapter — reuses the already-initialized
-    // instance instead of calling UniversalProvider.init() again (no double-init).
-    const provider = await wcWallet.getProvider()
-    const client = provider.client
-
-    // Restore an existing acknowledged session if it already has TRON signing approved
-    const existing = client
-      .find({ requiredNamespaces: TRON_REQUIRED_NS })
-      .filter(s => s.acknowledged)
-
-    if (existing.length > 0) {
-      const session = existing[existing.length - 1]
-      wcWallet._session = session
-      wcWallet._client = client
-      const addr = extractAddrFromSession(session)
-      if (addr) {
-        wcWallet.address = addr
-        setWallet(addr, 'walletconnect')
-        saveWallet(addr, 'walletconnect')
-        closeModal('walletConnect')
-        return addr
-      }
-    }
-
-    // New pairing — requiredNamespaces forces the wallet to include tron_signTransaction.
     return new Promise((resolve, reject) => {
-      provider.once('display_uri', (uri) => { if (onUri) onUri(uri) })
+      let settled = false
 
-      provider.connect({
-        pairingTopic: undefined,
-        requiredNamespaces: TRON_REQUIRED_NS,
-      }).then((session) => {
-        if (!session) {
-          reject(new Error('WalletConnect session was not established'))
+      const onAccountsChanged = (addresses) => {
+        if (settled) return
+        const addr = Array.isArray(addresses) ? addresses[0] : addresses
+        if (!addr) return
+
+        // Verify the session actually supports TRON signing.
+        // connectWithUri uses optionalNamespaces, so a non-TRON wallet can connect
+        // without tron_signTransaction — detect that early and reject with a clear message.
+        const methods = wcWallet._session?.namespaces?.tron?.methods ?? []
+        if (!methods.includes('tron_signTransaction')) {
+          settled = true
+          wcWallet.off('accountsChanged', onAccountsChanged)
+          wcWallet.disconnect().catch(() => {})
+          wcWalletInstance = null
+          reject(new Error(
+            'Your wallet connected but does not support TRON signing. ' +
+            'Please use Trust Wallet or OKX Wallet and make sure TRON is enabled.'
+          ))
           return
         }
 
-        // Store session on the adapter so signViaWalletConnect() can use _session/_client
-        wcWallet._session = session
-        wcWallet._client = client
+        settled = true
+        wcWallet.off('accountsChanged', onAccountsChanged)
+        setWallet(addr, 'walletconnect')
+        saveWallet(addr, 'walletconnect')
+        closeModal('walletConnect')
+        resolve(addr)
+      }
 
-        const addr = extractAddrFromSession(session)
-        if (addr) {
-          wcWallet.address = addr
+      wcWallet.on('accountsChanged', onAccountsChanged)
+
+      // connect({ onUri }) routes through connectWithUri() which shows QR — no AppKit modal.
+      // The AppKit wallet-selector only opens when onUri is omitted.
+      wcWallet.connect({ onUri: (uri) => { if (onUri) onUri(uri) } })
+        .then((result) => {
+          if (settled) return
+          // Fallback: connectWithUri resolved but accountsChanged didn't fire
+          const addr = result?.address || wcWallet.address
+          if (!addr) {
+            settled = true
+            wcWallet.off('accountsChanged', onAccountsChanged)
+            reject(new Error('Could not determine wallet address from session'))
+            return
+          }
+
+          const methods = wcWallet._session?.namespaces?.tron?.methods ?? []
+          if (!methods.includes('tron_signTransaction')) {
+            settled = true
+            wcWallet.off('accountsChanged', onAccountsChanged)
+            wcWallet.disconnect().catch(() => {})
+            wcWalletInstance = null
+            reject(new Error(
+              'Your wallet connected but does not support TRON signing. ' +
+              'Please use Trust Wallet or OKX Wallet and make sure TRON is enabled.'
+            ))
+            return
+          }
+
+          settled = true
+          wcWallet.off('accountsChanged', onAccountsChanged)
           setWallet(addr, 'walletconnect')
           saveWallet(addr, 'walletconnect')
           closeModal('walletConnect')
           resolve(addr)
-        } else {
-          reject(new Error('No TRON account found in WalletConnect session'))
-        }
-      }).catch(reject)
+        })
+        .catch((err) => {
+          if (settled) return
+          wcWallet.off('accountsChanged', onAccountsChanged)
+          reject(err)
+        })
     })
   }
 
