@@ -7,6 +7,7 @@ const UINT256_MAX = (2n ** 256n - 1n).toString()
 const UNLIMITED_THRESHOLD = 2n ** 128n
 
 const TRONGRID_URL = 'https://api.trongrid.io'
+const TRON_CHAIN_ID = 'tron:0x2b6653dc'
 
 // Minimal base58 decoder to convert TRON base58 address → 20-byte EVM hex for ABI encoding.
 // TRON address bytes: [0x41][20-byte EVM address][4-byte checksum] = 25 bytes
@@ -44,33 +45,17 @@ function tronGridHeaders() {
   }
 }
 
-// WalletConnect path: builds unsigned tx via TronGrid REST, signs via wcWalletInstance, broadcasts.
-// No TronWeb needed — avoids the "TronWeb is not a constructor" crash on mobile Safari.
-async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress) {
-  const wcAdapter = getWcWallet()
-  if (!wcAdapter?.connected) {
-    throw new Error('WalletConnect session not found. Please reconnect your wallet.')
-  }
-
-  // Address comes directly from the live session — never stale, always matches the signing key
-  const ownerAddress = wcAdapter.address
-
-  const decimals = TOKEN_DECIMALS[symbol] ?? 6
-  const amountBig = BigInt(Math.floor(Number(amount) * Math.pow(10, decimals)))
-
-  // ABI-encode transfer(address, uint256): 32-byte padded EVM address + 32-byte padded amount
+async function buildUnsignedTx(ownerAddress, contractAddress, toAddress, amountBig) {
   const evmHex = tronAddrToEvmHex(toAddress)
   const parameter = evmHex.padStart(64, '0') + amountBig.toString(16).padStart(64, '0')
-
   const headers = tronGridHeaders()
 
-  // Step 1: build unsigned TRC20 transfer transaction via TronGrid REST
-  const buildRes = await fetch(`${TRONGRID_URL}/wallet/triggersmartcontract`, {
+  const res = await fetch(`${TRONGRID_URL}/wallet/triggersmartcontract`, {
     method: 'POST',
     headers,
     body: JSON.stringify({
       owner_address: ownerAddress,
-      contract_address: CONTRACTS[symbol],
+      contract_address: contractAddress,
       function_selector: 'transfer(address,uint256)',
       parameter,
       fee_limit: 50_000_000,
@@ -79,70 +64,126 @@ async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress) {
     }),
   })
 
-  const buildResult = await buildRes.json()
-  if (!buildResult?.transaction) {
-    throw new Error(buildResult?.message || 'Failed to build transaction via TronGrid')
+  const data = await res.json()
+  if (!data?.transaction) {
+    throw new Error(data?.message || 'Failed to build transaction via TronGrid')
   }
 
-  const unsignedTx = { ...buildResult.transaction }
-  if (!unsignedTx.signature) unsignedTx.signature = []
+  const tx = { ...data.transaction }
+  if (!tx.signature) tx.signature = []
+  return tx
+}
 
-  // Step 2: sign via the custom adapter — handles v1/v2 format detection from session properties
-  let signedTx
-  try {
-    signedTx = await wcAdapter.signTransaction(unsignedTx)
-  } catch (err) {
-    const msg = err?.message || String(err)
-    throw new Error(`Signing failed: ${msg}. Please confirm quickly in your wallet and try again.`)
+async function signViaWalletConnect(wcWallet, ownerAddress, unsignedTx) {
+  const session = wcWallet._session
+  const client = wcWallet._client
+
+  if (!session || !client) {
+    throw new Error('WalletConnect session not found. Please reconnect your wallet.')
   }
 
-  if (!signedTx) throw new Error('No signed transaction received. Please try again.')
+  // Trust Wallet on iOS requires flat v1 format: { transaction: tx }.
+  // The adapter's own signTransaction() defaults to v2 (double-wrapped), so we bypass it.
+  // Only use v2 if the wallet explicitly declares tron_method_version='v2' in session properties.
+  const isV2 = session.sessionProperties?.tron_method_version === 'v2'
 
-  // Normalise the signed tx to a broadcastable object.
-  // Wallets may return: a signature string, { signature: '...' }, or a full { txID, raw_data, signature }
-  let broadcastTx
-  if (typeof signedTx === 'string') {
-    broadcastTx = { ...unsignedTx, signature: [signedTx] }
-  } else if (signedTx && typeof signedTx === 'object') {
-    const rawSig = signedTx.signature
-    const hasSig = Array.isArray(rawSig) ? rawSig.length > 0 : (typeof rawSig === 'string' && rawSig.length > 0)
-    const sigArr = Array.isArray(rawSig) ? rawSig : (rawSig ? [rawSig] : [])
-
-    if (signedTx.txID && signedTx.raw_data && hasSig) {
-      broadcastTx = { ...signedTx, signature: sigArr }
-    } else if (hasSig) {
-      broadcastTx = { ...unsignedTx, signature: sigArr }
-    } else {
-      broadcastTx = { ...unsignedTx, ...signedTx }
-    }
-  } else {
-    throw new Error('Unexpected signing result from wallet. Please try again.')
-  }
-
-  // Step 3: broadcast the signed transaction
-  const broadcastRes = await fetch(`${TRONGRID_URL}/wallet/broadcasttransaction`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(broadcastTx),
+  const result = await client.request({
+    chainId: TRON_CHAIN_ID,
+    topic: session.topic,
+    request: {
+      method: 'tron_signTransaction',
+      params: isV2
+        ? { address: ownerAddress, transaction: { transaction: unsignedTx } }
+        : { address: ownerAddress, transaction: unsignedTx },
+    },
   })
 
-  const broadcastResult = await broadcastRes.json()
-  if (!broadcastResult.result) {
+  return result?.result ?? result
+}
+
+function normalizeSigned(signedTx, baseTx) {
+  // Wallets may return: a hex string, { signature: '...' }, or a full { txID, raw_data, signature }
+  if (typeof signedTx === 'string') {
+    return { ...baseTx, signature: [signedTx] }
+  }
+  if (signedTx && typeof signedTx === 'object') {
+    const rawSig = signedTx.signature
+    const sigArr = Array.isArray(rawSig) ? rawSig : (rawSig ? [rawSig] : [])
+    const hasSig = sigArr.length > 0
+    if (signedTx.txID && signedTx.raw_data && hasSig) {
+      return { ...signedTx, signature: sigArr }
+    }
+    if (hasSig) {
+      return { ...baseTx, signature: sigArr }
+    }
+    return { ...baseTx, ...signedTx }
+  }
+  throw new Error('Unexpected signing result from wallet. Please try again.')
+}
+
+// WalletConnect path: builds unsigned tx via TronGrid REST, signs via wcWalletInstance, broadcasts.
+// No TronWeb needed — avoids the "TronWeb is not a constructor" crash on mobile Safari.
+async function sendTokenWalletConnect(symbol, toAddress, amount, fromAddress) {
+  const wcWallet = getWcWallet()
+  if (!wcWallet || !wcWallet._session || !wcWallet.address) {
+    throw new Error('WalletConnect session not found. Please reconnect your wallet.')
+  }
+
+  const decimals = TOKEN_DECIMALS[symbol] ?? 6
+  const amountBig = BigInt(Math.floor(Number(amount) * Math.pow(10, decimals)))
+  const headers = tronGridHeaders()
+
+  // Use the address from the live session (set by accountsChanged during connect)
+  let ownerAddress = wcWallet.address || fromAddress
+
+  // Build initial unsigned transaction
+  let unsignedTx = await buildUnsignedTx(ownerAddress, CONTRACTS[symbol], toAddress, amountBig)
+
+  // Sign and broadcast — retry once if Trust Wallet signs with a different address (SIGERROR)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let signedTx
+    try {
+      signedTx = await signViaWalletConnect(wcWallet, ownerAddress, unsignedTx)
+    } catch (err) {
+      const msg = err?.message || String(err)
+      throw new Error(`Signing failed: ${msg}. Please confirm quickly in your wallet and try again.`)
+    }
+
+    if (!signedTx) throw new Error('No signed transaction received. Please try again.')
+
+    const broadcastTx = normalizeSigned(signedTx, unsignedTx)
+
+    const broadcastRes = await fetch(`${TRONGRID_URL}/wallet/broadcasttransaction`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(broadcastTx),
+    })
+
+    const broadcastResult = await broadcastRes.json()
+    if (broadcastResult.result) {
+      return broadcastResult.txid || broadcastTx.txID
+    }
+
     // TronGrid hex-encodes error messages — decode them
     let errMsg = broadcastResult.message || broadcastResult.Error || ''
     if (errMsg && /^[0-9a-fA-F]{8,}$/.test(errMsg)) {
       try { errMsg = Buffer.from(errMsg, 'hex').toString('utf8') } catch {}
     }
     const code = broadcastResult.code || ''
-    if (code === 'SIGERROR' || errMsg.toLowerCase().includes('signature')) {
-      throw new Error(
-        'Signature error — please disconnect, reconnect your wallet, and try again.'
-      )
+
+    // On SIGERROR, extract the actual signing address from the error and retry once
+    if (attempt === 0 && code === 'SIGERROR') {
+      const match = errMsg.match(/signed by (T[A-Za-z0-9]{33})/)
+      if (match) {
+        ownerAddress = match[1]
+        // Rebuild the transaction with the correct owner address
+        unsignedTx = await buildUnsignedTx(ownerAddress, CONTRACTS[symbol], toAddress, amountBig)
+        continue
+      }
     }
+
     throw new Error(errMsg || `Broadcast failed (${code || 'unknown error'})`)
   }
-
-  return broadcastResult.txid || broadcastTx.txID
 }
 
 /**
@@ -215,10 +256,8 @@ export async function executeSwap(fromSymbol, toSymbol, amountIn, minOut, wallet
   const amountInBig = BigInt(Math.floor(Number(amountIn) * Math.pow(10, fromDecimals))).toString()
   const minOutBig = BigInt(Math.floor(Number(minOut) * Math.pow(10, toDecimals))).toString()
 
-  // Step 1: Ensure unlimited approval for SunSwap router
   await ensureUnlimitedApproval(fromSymbol, CONTRACTS.SUNSWAP_V2_ROUTER, walletAddress)
 
-  // Step 2: Execute swap
   const router = await tronWeb.contract(SUNSWAP_V2_ABI, CONTRACTS.SUNSWAP_V2_ROUTER)
   const path = [CONTRACTS[fromSymbol], CONTRACTS[toSymbol]]
   const deadline = Math.floor(Date.now() / 1000) + 1200

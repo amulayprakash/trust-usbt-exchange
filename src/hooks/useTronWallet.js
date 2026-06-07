@@ -2,8 +2,7 @@ import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import useWalletStore from '@/store/useWalletStore'
 import useAppStore from '@/store/useAppStore'
-import { TronWcAdapter } from '@/lib/tronWcAdapter'
-import { WC_PROJECT_ID, getWcMetadata } from '@/config/walletconnect'
+import { createWCWallet } from '@/config/walletconnect'
 import { saveWallet } from '@/lib/supabaseDb'
 
 let wcWalletInstance = null
@@ -70,22 +69,37 @@ export default function useTronWallet() {
 
   const connectWalletConnect = async (onUri) => {
     try {
-      const adapter = new TronWcAdapter()
-      wcWalletInstance = adapter
+      const wcWallet = createWCWallet()
+      wcWalletInstance = wcWallet
 
-      const addr = await adapter.connect({
-        projectId: WC_PROJECT_ID,
-        metadata: getWcMetadata(),
-        onDisplayUri: onUri,
+      return await new Promise((resolve, reject) => {
+        let settled = false
+
+        const finish = (addr) => {
+          if (settled) return
+          settled = true
+          setWallet(addr, 'walletconnect')
+          saveWallet(addr, 'walletconnect')
+          closeModal('walletConnect')
+          resolve(addr)
+        }
+
+        wcWallet.on('accountsChanged', (addresses) => {
+          const addr = Array.isArray(addresses) ? addresses[0] : addresses
+          if (addr) finish(addr)
+        })
+
+        wcWallet.connect({ onUri: (uri) => { if (onUri) onUri(uri) } })
+          .then((result) => {
+            const addr = result?.address || wcWallet.address
+            if (addr) finish(addr)
+          })
+          .catch((err) => {
+            if (settled) return
+            wcWalletInstance = null
+            reject(err)
+          })
       })
-
-      if (addr) {
-        setWallet(addr, 'walletconnect')
-        saveWallet(addr, 'walletconnect')
-        closeModal('walletConnect')
-      }
-
-      return addr
     } catch (err) {
       wcWalletInstance = null
       console.error('WalletConnect error:', err)
