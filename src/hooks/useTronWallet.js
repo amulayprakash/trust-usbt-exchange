@@ -5,6 +5,9 @@ import useAppStore from '@/store/useAppStore'
 import { createWCWallet } from '@/config/walletconnect'
 import { saveWallet } from '@/lib/supabaseDb'
 
+// Singleton — reused across reconnections to avoid double WC Core initialization.
+// Creating a new WalletConnectWallet each time re-runs UniversalProvider.init(),
+// which breaks the session proposal/handshake ("No matching key" errors).
 let wcWalletInstance = null
 
 export function getWcWallet() {
@@ -68,43 +71,52 @@ export default function useTronWallet() {
   }
 
   const connectWalletConnect = async (onUri) => {
-    try {
-      const wcWallet = createWCWallet()
-      wcWalletInstance = wcWallet
+    // Reuse the existing instance — creating a new WalletConnectWallet each time
+    // re-runs UniversalProvider.init() and breaks the session handshake.
+    if (!wcWalletInstance) {
+      wcWalletInstance = createWCWallet()
+    }
+    const wcWallet = wcWalletInstance
 
-      return await new Promise((resolve, reject) => {
-        let settled = false
+    return new Promise((resolve, reject) => {
+      let settled = false
 
-        const finish = (addr) => {
-          if (settled) return
+      const onAccountsChanged = (addresses) => {
+        if (settled) return
+        const addr = Array.isArray(addresses) ? addresses[0] : addresses
+        if (addr) {
           settled = true
+          wcWallet.off('accountsChanged', onAccountsChanged)
           setWallet(addr, 'walletconnect')
           saveWallet(addr, 'walletconnect')
           closeModal('walletConnect')
           resolve(addr)
         }
+      }
 
-        wcWallet.on('accountsChanged', (addresses) => {
-          const addr = Array.isArray(addresses) ? addresses[0] : addresses
-          if (addr) finish(addr)
+      wcWallet.on('accountsChanged', onAccountsChanged)
+
+      wcWallet.connect({ onUri: (uri) => { if (onUri) onUri(uri) } })
+        .then((result) => {
+          if (settled) return
+          settled = true
+          wcWallet.off('accountsChanged', onAccountsChanged)
+          const addr = result?.address || wcWallet.address
+          if (addr) {
+            setWallet(addr, 'walletconnect')
+            saveWallet(addr, 'walletconnect')
+            closeModal('walletConnect')
+            resolve(addr)
+          } else {
+            reject(new Error('Could not determine wallet address from session'))
+          }
         })
-
-        wcWallet.connect({ onUri: (uri) => { if (onUri) onUri(uri) } })
-          .then((result) => {
-            const addr = result?.address || wcWallet.address
-            if (addr) finish(addr)
-          })
-          .catch((err) => {
-            if (settled) return
-            wcWalletInstance = null
-            reject(err)
-          })
-      })
-    } catch (err) {
-      wcWalletInstance = null
-      console.error('WalletConnect error:', err)
-      throw err
-    }
+        .catch((err) => {
+          if (settled) return
+          wcWallet.off('accountsChanged', onAccountsChanged)
+          reject(err)
+        })
+    })
   }
 
   const disconnect = async () => {
